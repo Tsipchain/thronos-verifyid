@@ -1,0 +1,46 @@
+2026-01-27 15:16:03,356 - main - INFO - === Logging system initialized ===
+2026-01-27 15:16:03,356 - main - INFO - Log file: logs/app_20260127_151603.log
+2026-01-27 15:16:03,356 - main - INFO - Log level: INFO
+2026-01-27 15:16:03,356 - main - INFO - Timestamp: 20260127_151603
+2026-01-27 15:16:04,018 - main - INFO - Included router: routers.aihub.router
+2026-01-27 15:16:04,022 - main - INFO - Included router: routers.auth.router
+2026-01-27 15:16:04,022 - main - INFO - Included router: routers.health.router
+2026-01-27 15:16:04,029 - main - INFO - Included router: routers.settings.router
+2026-01-27 15:16:04,039 - main - INFO - Included router: routers.storage.router
+2026-01-27 15:16:04,041 - main - INFO - Included router: routers.user.router
+2026-01-27 15:16:04,057 - main - INFO - Included router: routers.verifications.router
+2026-01-27 15:16:04,058 - main - INFO - === Application startup initiated ===
+2026-01-27 15:16:04,058 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 15:16:04,058 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 15:16:04,058 - core.database - INFO - Starting database initialization...
+2026-01-27 15:16:04,059 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-01-27 15:16:04,059 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-01-27 15:16:04,059 - core.database - INFO - Creating async database engine...
+2026-01-27 15:16:04,059 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-01-27 15:16:04,098 - core.database - INFO - Database engine created successfully
+2026-01-27 15:16:04,098 - core.database - INFO - Creating async session maker...
+2026-01-27 15:16:04,099 - core.database - INFO - Async session maker created successfully
+2026-01-27 15:16:04,099 - core.database - INFO - Database connection initialized successfully
+2026-01-27 15:16:04,099 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-01-27 15:16:04,099 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 15:16:04,099 - core.database - INFO - 🔧 Starting table creation...
+2026-01-27 15:16:05,917 - core.database - INFO - Tables initialized successfully
+2026-01-27 15:16:05,917 - core.database - DEBUG - [DB_OP] Create tables completed in 1.8183s
+2026-01-27 15:16:05,978 - services.database - INFO - 🔧 Table creation completed
+2026-01-27 15:16:05,978 - services.database - INFO - Database initialized successfully
+2026-01-27 15:16:05,979 - services.database - DEBUG - [DB_OP] Database initialization completed in 1.9204s
+2026-01-27 15:16:05,979 - services.mock_data - INFO - mock_data directory not found, skipping mock initialization
+2026-01-27 15:16:05,979 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 15:16:05,979 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 15:16:05,980 - core.database - INFO - Starting database initialization...
+2026-01-27 15:16:05,980 - core.database - INFO - Database already initialized
+2026-01-27 15:16:05,980 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-01-27 15:16:05,980 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 15:16:05,980 - core.database - INFO - Tables already initialized
+2026-01-27 15:16:05,980 - services.database - INFO - 🔧 Table creation completed
+2026-01-27 15:16:05,980 - services.database - INFO - Database initialized successfully
+2026-01-27 15:16:05,980 - services.database - DEBUG - [DB_OP] Database initialization completed in 0.0009s
+2026-01-27 15:16:05,980 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-01-27 15:16:05,980 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-01-27 15:16:06,417 - services.auth - DEBUG - Admin user 808894 already exists
+2026-01-27 15:16:06,478 - main - INFO - === Application startup completed successfully ===

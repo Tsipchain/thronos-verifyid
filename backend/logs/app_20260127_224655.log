@@ -1,0 +1,65 @@
+2026-01-27 22:46:55,268 - main - INFO - === Logging system initialized ===
+2026-01-27 22:46:55,268 - main - INFO - Log file: logs/app_20260127_224655.log
+2026-01-27 22:46:55,268 - main - INFO - Log level: INFO
+2026-01-27 22:46:55,268 - main - INFO - === Logging system initialized ===
+2026-01-27 22:46:55,269 - main - INFO - Timestamp: 20260127_224655
+2026-01-27 22:46:55,269 - main - INFO - Log file: logs/app_20260127_224655.log
+2026-01-27 22:46:55,269 - main - INFO - Log level: INFO
+2026-01-27 22:46:55,269 - main - INFO - Timestamp: 20260127_224655
+2026-01-27 22:46:56,459 - main - DEBUG - Routers package 'routers' not loaded: cannot import name 'check_database_health' from 'services.database' (/workspace/app/backend/services/database.py)
+2026-01-27 22:46:56,460 - main - INFO - === Application startup initiated ===
+2026-01-27 22:46:56,460 - main - DEBUG - Routers package 'routers' not loaded: cannot import name 'check_database_health' from 'services.database' (/workspace/app/backend/services/database.py)
+2026-01-27 22:46:56,460 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 22:46:56,460 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 22:46:56,460 - core.database - INFO - Starting database initialization...
+2026-01-27 22:46:56,461 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-01-27 22:46:56,461 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-01-27 22:46:56,461 - main - INFO - === Application startup initiated ===
+2026-01-27 22:46:56,462 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 22:46:56,462 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 22:46:56,462 - core.database - INFO - Creating async database engine...
+2026-01-27 22:46:56,462 - core.database - INFO - Starting database initialization...
+2026-01-27 22:46:56,462 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-01-27 22:46:56,462 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-01-27 22:46:56,462 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-01-27 22:46:56,463 - core.database - INFO - Creating async database engine...
+2026-01-27 22:46:56,463 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-01-27 22:46:57,334 - core.database - INFO - Database engine created successfully
+2026-01-27 22:46:57,334 - core.database - INFO - Creating async session maker...
+2026-01-27 22:46:57,334 - core.database - INFO - Async session maker created successfully
+2026-01-27 22:46:57,334 - core.database - INFO - Database connection initialized successfully
+2026-01-27 22:46:57,335 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 22:46:57,335 - core.database - INFO - 🔧 Starting table creation...
+2026-01-27 22:46:57,335 - core.database - INFO - Database engine created successfully
+2026-01-27 22:46:57,335 - core.database - INFO - Creating async session maker...
+2026-01-27 22:46:57,335 - core.database - INFO - Async session maker created successfully
+2026-01-27 22:46:57,335 - core.database - INFO - Database connection initialized successfully
+2026-01-27 22:46:57,335 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 22:46:57,336 - core.database - INFO - 🔧 Starting table creation...
+2026-01-27 22:46:59,602 - core.database - INFO - Tables initialized successfully
+2026-01-27 22:46:59,602 - core.database - DEBUG - [DB_OP] Create tables completed in 2.2668s
+2026-01-27 22:46:59,641 - core.database - INFO - Tables initialized successfully
+2026-01-27 22:46:59,641 - core.database - DEBUG - [DB_OP] Create tables completed in 2.3066s
+2026-01-27 22:46:59,661 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-01-27 22:46:59,661 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0003s
+2026-01-27 22:46:59,700 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-01-27 22:46:59,701 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0004s
+2026-01-27 22:47:00,080 - services.database - INFO - ✅ RBAC roles and permissions initialized
+2026-01-27 22:47:00,081 - services.database - INFO - ✅ Database initialization completed successfully
+2026-01-27 22:47:00,094 - services.mock_data - INFO - mock_data directory not found, skipping mock initialization
+2026-01-27 22:47:00,095 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-01-27 22:47:00,095 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-01-27 22:47:00,097 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.4364s
+2026-01-27 22:47:00,129 - services.database - INFO - ✅ RBAC roles and permissions initialized
+2026-01-27 22:47:00,129 - services.database - INFO - ✅ Database initialization completed successfully
+2026-01-27 22:47:00,130 - services.mock_data - INFO - mock_data directory not found, skipping mock initialization
+2026-01-27 22:47:00,130 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-01-27 22:47:00,130 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-01-27 22:47:00,132 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.4316s
+2026-01-27 22:47:00,674 - services.auth - INFO - ✅ Admin user 808894 already exists
+2026-01-27 22:47:00,732 - main - INFO - === Application startup completed successfully ===
+2026-01-27 22:47:00,869 - services.auth - INFO - ✅ Admin user 808894 already exists
+2026-01-27 22:47:00,929 - main - INFO - === Application startup completed successfully ===
+2026-01-27 22:48:01,764 - services.database - INFO - Closing database connections...
+2026-01-27 22:48:01,888 - core.database - INFO - Database connection closed and engine disposed
+2026-01-27 22:48:01,888 - services.database - INFO - Database connections closed

@@ -1,0 +1,41 @@
+2026-01-27 23:07:34,644 - main - INFO - === Logging system initialized ===
+2026-01-27 23:07:34,645 - main - INFO - Log file: logs/app_20260127_230734.log
+2026-01-27 23:07:34,645 - main - INFO - Log level: INFO
+2026-01-27 23:07:34,645 - main - INFO - Timestamp: 20260127_230734
+2026-01-27 23:07:36,685 - main - INFO - Included router: routers.aihub.router
+2026-01-27 23:07:36,689 - main - INFO - Included router: routers.auth.router
+2026-01-27 23:07:36,706 - main - INFO - Included router: routers.chat.router
+2026-01-27 23:07:36,707 - main - INFO - Included router: routers.health.router
+2026-01-27 23:07:36,712 - main - INFO - Included router: routers.rbac.router
+2026-01-27 23:07:36,720 - main - INFO - Included router: routers.settings.router
+2026-01-27 23:07:36,730 - main - INFO - Included router: routers.storage.router
+2026-01-27 23:07:36,732 - main - INFO - Included router: routers.user.router
+2026-01-27 23:07:36,749 - main - INFO - Included router: routers.verifications.router
+2026-01-27 23:07:36,750 - main - INFO - === Application startup initiated ===
+2026-01-27 23:07:36,750 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 23:07:36,750 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 23:07:36,750 - core.database - INFO - Starting database initialization...
+2026-01-27 23:07:36,750 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-01-27 23:07:36,750 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-01-27 23:07:36,751 - core.database - INFO - Creating async database engine...
+2026-01-27 23:07:36,751 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-01-27 23:07:36,795 - core.database - INFO - Database engine created successfully
+2026-01-27 23:07:36,795 - core.database - INFO - Creating async session maker...
+2026-01-27 23:07:36,795 - core.database - INFO - Async session maker created successfully
+2026-01-27 23:07:36,796 - core.database - INFO - Database connection initialized successfully
+2026-01-27 23:07:36,796 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 23:07:36,796 - core.database - INFO - 🔧 Starting table creation...
+2026-01-27 23:07:39,636 - core.database - INFO - Tables initialized successfully
+2026-01-27 23:07:39,637 - core.database - DEBUG - [DB_OP] Create tables completed in 2.8408s
+2026-01-27 23:07:39,710 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-01-27 23:07:39,710 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0003s
+2026-01-27 23:07:40,238 - services.database - INFO - ✅ RBAC roles and permissions initialized
+2026-01-27 23:07:40,238 - services.database - INFO - ✅ Database initialization completed successfully
+2026-01-27 23:07:40,239 - services.mock_data - INFO - mock_data directory not found, skipping mock initialization
+2026-01-27 23:07:40,239 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-01-27 23:07:40,239 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-01-27 23:07:40,241 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.5311s
+2026-01-27 23:07:40,825 - services.auth - INFO - ✅ Admin user 808894 already exists
+2026-01-27 23:07:40,886 - main - INFO - === Application startup completed successfully ===
+2026-01-27 23:07:50,653 - dependencies.auth - DEBUG - Authentication required for request GET /api/v1/auth/me
+2026-01-27 23:08:05,289 - dependencies.auth - DEBUG - Authentication required for request GET /api/v1/auth/me

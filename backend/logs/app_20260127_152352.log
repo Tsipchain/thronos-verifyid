@@ -1,0 +1,18 @@
+2026-01-27 15:23:52,157 - main - INFO - === Logging system initialized ===
+2026-01-27 15:23:52,158 - main - INFO - Log file: logs/app_20260127_152352.log
+2026-01-27 15:23:52,158 - main - INFO - Log level: INFO
+2026-01-27 15:23:52,158 - main - INFO - Timestamp: 20260127_152352
+2026-01-27 15:23:52,222 - main - DEBUG - Routers package 'routers' not loaded: cannot import name 'check_database_health' from 'services.database' (/workspace/app/backend/services/database.py)
+2026-01-27 15:23:52,223 - main - INFO - === Application startup initiated ===
+2026-01-27 15:23:52,223 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 15:23:52,223 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 15:23:52,223 - core.database - INFO - Starting database initialization...
+2026-01-27 15:23:52,223 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-01-27 15:23:52,223 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-01-27 15:23:52,224 - core.database - INFO - Creating async database engine...
+2026-01-27 15:23:52,224 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-01-27 15:23:52,257 - core.database - INFO - Database engine created successfully
+2026-01-27 15:23:52,257 - core.database - INFO - Creating async session maker...
+2026-01-27 15:23:52,257 - core.database - INFO - Async session maker created successfully
+2026-01-27 15:23:52,257 - core.database - INFO - Database connection initialized successfully
+2026-01-27 15:23:52,257 - services.database - ERROR - Failed to initialize database: 'DatabaseManager' object has no attribute 'get_session'

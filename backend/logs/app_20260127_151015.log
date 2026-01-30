@@ -1,0 +1,46 @@
+2026-01-27 15:10:15,647 - main - INFO - === Logging system initialized ===
+2026-01-27 15:10:15,648 - main - INFO - Log file: logs/app_20260127_151015.log
+2026-01-27 15:10:15,648 - main - INFO - Log level: INFO
+2026-01-27 15:10:15,648 - main - INFO - Timestamp: 20260127_151015
+2026-01-27 15:10:29,054 - main - INFO - Included router: routers.aihub.router
+2026-01-27 15:10:29,057 - main - INFO - Included router: routers.auth.router
+2026-01-27 15:10:29,058 - main - INFO - Included router: routers.health.router
+2026-01-27 15:10:29,065 - main - INFO - Included router: routers.settings.router
+2026-01-27 15:10:29,076 - main - INFO - Included router: routers.storage.router
+2026-01-27 15:10:29,078 - main - INFO - Included router: routers.user.router
+2026-01-27 15:10:29,095 - main - INFO - Included router: routers.verifications.router
+2026-01-27 15:10:29,096 - main - INFO - === Application startup initiated ===
+2026-01-27 15:10:29,096 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 15:10:29,096 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 15:10:29,096 - core.database - INFO - Starting database initialization...
+2026-01-27 15:10:29,096 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-01-27 15:10:29,096 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-01-27 15:10:29,097 - core.database - INFO - Creating async database engine...
+2026-01-27 15:10:29,097 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-01-27 15:10:29,656 - core.database - INFO - Database engine created successfully
+2026-01-27 15:10:29,656 - core.database - INFO - Creating async session maker...
+2026-01-27 15:10:29,656 - core.database - INFO - Async session maker created successfully
+2026-01-27 15:10:29,656 - core.database - INFO - Database connection initialized successfully
+2026-01-27 15:10:29,656 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-01-27 15:10:29,656 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 15:10:29,657 - core.database - INFO - 🔧 Starting table creation...
+2026-01-27 15:10:33,984 - core.database - INFO - Tables initialized successfully
+2026-01-27 15:10:33,984 - core.database - DEBUG - [DB_OP] Create tables completed in 4.3274s
+2026-01-27 15:10:34,047 - services.database - INFO - 🔧 Table creation completed
+2026-01-27 15:10:34,048 - services.database - INFO - Database initialized successfully
+2026-01-27 15:10:34,048 - services.database - DEBUG - [DB_OP] Database initialization completed in 4.9519s
+2026-01-27 15:10:34,050 - services.mock_data - INFO - mock_data directory not found, skipping mock initialization
+2026-01-27 15:10:34,050 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 15:10:34,050 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 15:10:34,050 - core.database - INFO - Starting database initialization...
+2026-01-27 15:10:34,050 - core.database - INFO - Database already initialized
+2026-01-27 15:10:34,050 - services.database - INFO - 🔧 Database connection initialized, now creating tables if tables not exist...
+2026-01-27 15:10:34,050 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 15:10:34,050 - core.database - INFO - Tables already initialized
+2026-01-27 15:10:34,050 - services.database - INFO - 🔧 Table creation completed
+2026-01-27 15:10:34,050 - services.database - INFO - Database initialized successfully
+2026-01-27 15:10:34,050 - services.database - DEBUG - [DB_OP] Database initialization completed in 0.0007s
+2026-01-27 15:10:34,051 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-01-27 15:10:34,051 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-01-27 15:10:34,670 - services.auth - DEBUG - Created admin user: 808894 with email: giorgis.hacks@gmail.com
+2026-01-27 15:10:34,671 - main - INFO - === Application startup completed successfully ===

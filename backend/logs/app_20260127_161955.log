@@ -1,0 +1,34 @@
+2026-01-27 16:19:55,192 - main - INFO - === Logging system initialized ===
+2026-01-27 16:19:55,192 - main - INFO - Log file: logs/app_20260127_161955.log
+2026-01-27 16:19:55,192 - main - INFO - Log level: INFO
+2026-01-27 16:19:55,192 - main - INFO - Timestamp: 20260127_161955
+2026-01-27 16:19:55,235 - main - DEBUG - Routers package 'routers' not loaded: cannot import name 'check_database_health' from 'services.database' (/workspace/app/backend/services/database.py)
+2026-01-27 16:19:55,236 - main - INFO - === Application startup initiated ===
+2026-01-27 16:19:55,236 - services.database - DEBUG - [DB_OP] Starting database initialization
+2026-01-27 16:19:55,236 - services.database - INFO - 🔧 Starting database initialization...
+2026-01-27 16:19:55,236 - core.database - INFO - Starting database initialization...
+2026-01-27 16:19:55,237 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-01-27 16:19:55,237 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-01-27 16:19:55,237 - core.database - INFO - Creating async database engine...
+2026-01-27 16:19:55,237 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-01-27 16:19:55,288 - core.database - INFO - Database engine created successfully
+2026-01-27 16:19:55,288 - core.database - INFO - Creating async session maker...
+2026-01-27 16:19:55,288 - core.database - INFO - Async session maker created successfully
+2026-01-27 16:19:55,288 - core.database - INFO - Database connection initialized successfully
+2026-01-27 16:19:55,288 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-01-27 16:19:55,288 - core.database - INFO - 🔧 Starting table creation...
+2026-01-27 16:19:58,229 - core.database - INFO - Tables initialized successfully
+2026-01-27 16:19:58,230 - core.database - DEBUG - [DB_OP] Create tables completed in 2.9416s
+2026-01-27 16:19:58,294 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-01-27 16:19:58,294 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0003s
+2026-01-27 16:19:58,749 - services.database - INFO - ✅ RBAC roles and permissions initialized
+2026-01-27 16:19:58,749 - services.database - INFO - ✅ Database initialization completed successfully
+2026-01-27 16:19:58,749 - services.mock_data - INFO - mock_data directory not found, skipping mock initialization
+2026-01-27 16:19:58,750 - core.config - DEBUG - Read dynamic attribute admin_user_id from environment variable ADMIN_USER_ID
+2026-01-27 16:19:58,750 - core.config - DEBUG - Read dynamic attribute admin_user_email from environment variable ADMIN_USER_EMAIL
+2026-01-27 16:19:58,751 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.4572s
+2026-01-27 16:19:59,324 - services.auth - INFO - ✅ Admin user 808894 already exists
+2026-01-27 16:19:59,384 - main - INFO - === Application startup completed successfully ===
+2026-01-27 16:23:36,917 - services.database - INFO - Closing database connections...
+2026-01-27 16:23:37,047 - core.database - INFO - Database connection closed and engine disposed
+2026-01-27 16:23:37,048 - services.database - INFO - Database connections closed
