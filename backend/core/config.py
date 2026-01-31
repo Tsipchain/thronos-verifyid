@@ -111,6 +111,6 @@ def validate_environment() -> None:
 
     auth_mode = os.getenv("KYC_AUTH_MODE", "").strip().lower()
     if auth_mode == "oidc":
-        oidc_missing = [name for name in OIDC_ENV_VARS if not os.getenv(name)]
-        if oidc_missing:
-            raise ValueError(f"Missing required OIDC environment variables: {', '.join(oidc_missing)}")
+        for var in OIDC_ENV_VARS:
+            if not os.getenv(var):
+                raise ValueError(f"Missing env {var} for OIDC mode")

@@ -94,6 +94,6 @@ class UserPresence(Base):
 ChatMessage = Messages
 ChatRoom = Conversations
 ChatRoomMember = ConversationParticipants
-ChatMessages = Messages
-ChatRooms = Conversations
-ChatRoomMembers = ConversationParticipants
+ChatMessages = ChatMessage
+ChatRooms = ChatRoom
+ChatRoomMembers = ChatRoomMember
