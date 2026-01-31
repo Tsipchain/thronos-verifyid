@@ -1,3 +1,4 @@
+-r requirements.default
 fastapi>=0.110.0
 uvicorn[standard]>=0.29.0
 pydantic>=2.5.0,<2.10
