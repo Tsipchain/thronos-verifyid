@@ -1,7 +1,7 @@
 from core.database import Base
 from .auth import User
 from .rbac import Roles, Permissions, RolePermissions, UserRoles
-from .chat import ChatMessages, ChatRooms, ChatRoomMembers
+from .chat import ChatMessage, ChatRoom, ChatRoomMember
 from .verifications import Verifications, VerificationType, VerificationStatus
 from .performance_metrics import QueryPerformanceLog, APIPerformanceLog, PerformanceAlert
 from .video_call_queue import VideoCallQueue, CallPriority, CallStatus
