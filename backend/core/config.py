@@ -6,6 +6,23 @@ from pydantic_settings import BaseSettings
 
 logger = logging.getLogger(__name__)
 
+REQUIRED_ENV_VARS = (
+    "DATABASE_URL",
+    "JWT_SECRET_KEY",
+    "JWT_ALGORITHM",
+    "JWT_EXPIRE_MINUTES",
+    "KYC_AUTH_MODE",
+    "KYC_ADMIN_KEY",
+    "THRONOS_ADMIN_SECRET",
+)
+
+OIDC_ENV_VARS = (
+    "OIDC_ISSUER_URL",
+    "OIDC_CLIENT_ID",
+    "OIDC_CLIENT_SECRET",
+    "OIDC_SCOPE",
+)
+
 
 class Settings(BaseSettings):
     # Application
@@ -80,3 +97,20 @@ class Settings(BaseSettings):
 
 # Global settings instance
 settings = Settings()
+
+
+def validate_environment() -> None:
+    """Validate required environment variables for boot."""
+    missing = [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
+    if missing:
+        raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+    jwt_algorithm = os.getenv("JWT_ALGORITHM")
+    if jwt_algorithm != "HS256":
+        raise ValueError("JWT_ALGORITHM must be set to HS256")
+
+    auth_mode = os.getenv("KYC_AUTH_MODE", "").strip().lower()
+    if auth_mode == "oidc":
+        oidc_missing = [name for name in OIDC_ENV_VARS if not os.getenv(name)]
+        if oidc_missing:
+            raise ValueError(f"Missing required OIDC environment variables: {', '.join(oidc_missing)}")
