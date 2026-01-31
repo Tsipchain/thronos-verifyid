@@ -1,7 +1,14 @@
 from core.database import Base
 from .auth import User
 from .rbac import Roles, Permissions, RolePermissions, UserRoles
-from .chat import ChatMessage, ChatRoom, ChatRoomMember
+from .chat import (
+    ChatMessage,
+    ChatRoom,
+    ChatRoomMember,
+    ChatMessages,
+    ChatRooms,
+    ChatRoomMembers,
+)
 from .verifications import Verifications, VerificationType, VerificationStatus
 from .performance_metrics import QueryPerformanceLog, APIPerformanceLog, PerformanceAlert
 from .video_call_queue import VideoCallQueue, CallPriority, CallStatus
@@ -15,6 +22,9 @@ __all__ = [
     "Permissions",
     "RolePermissions",
     "UserRoles",
+    "ChatMessage",
+    "ChatRoom",
+    "ChatRoomMember",
     "ChatMessages",
     "ChatRooms",
     "ChatRoomMembers",
