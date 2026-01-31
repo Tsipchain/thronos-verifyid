@@ -1,17 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Simple backend startup script that always uses port 8000
-set -e
+echo "[INFO] boot verifyid backend..."
 
-BACKEND_DIR="/workspace/app/backend"
-cd "$BACKEND_DIR"
-
-echo "[INFO] Starting backend on port 8000..."
-
-# Activate virtual environment if it exists
-if [ -d ".venv" ]; then
-    source .venv/bin/activate
+# Αν το script τρέχει από repo root, μπες στο backend/
+# Αν ήδη είσαι μέσα στο backend/, μην αλλάξεις dir.
+if [ -d "./backend" ] && [ -f "./backend/main.py" ]; then
+  cd backend
+elif [ -f "./main.py" ]; then
+  : # ήδη στο backend
+else
+  echo "[ERROR] Can't find backend/main.py or ./main.py from: $(pwd)"
+  echo "[ERROR] Make sure Railway Root Directory is repo root OR backend contains main.py"
+  exit 1
 fi
 
-# Start uvicorn on port 8000
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+PORT="${PORT:-8000}"
+HOST="${HOST:-0.0.0.0}"
+
+echo "[INFO] starting uvicorn on ${HOST}:${PORT} (cwd=$(pwd))"
+exec uvicorn main:app --host "$HOST" --port "$PORT"
