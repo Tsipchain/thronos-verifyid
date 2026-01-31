@@ -19,6 +19,35 @@ This is a FastAPI-based backend for an Identity Verification Platform with the f
 - **AI Integration**: OpenAI API for fraud detection
 - **Storage**: Object storage for documents and images
 
+## Railway Deployment Notes
+
+### Build/Start configuration
+
+- **Root Directory**: `backend`
+- **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Nixpacks**: keep the repository root `requirements.txt` pointing at `backend/requirements.txt`
+
+### Required Service Variables
+
+| Variable | Value/Description |
+| --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string with asyncpg, e.g. `postgresql+asyncpg://user:pass@host:port/db?sslmode=require` |
+| `JWT_SECRET_KEY` | Random secret (64+ chars) |
+| `JWT_ALGORITHM` | `HS256` |
+| `JWT_EXPIRE_MINUTES` | `43200` (30 days) or desired duration |
+| `KYC_AUTH_MODE` | `admin_key` (or `jwt` if full login is implemented) |
+| `KYC_ADMIN_KEY` | Random secret (64+ chars) |
+| `THRONOS_ADMIN_SECRET` | Secret used to communicate with Thronos node |
+| `FRONTEND_URL` | `https://thrchain.vercel.app` |
+| `DEV_BASE_URL` | `https://thrchain.vercel.app` (or dev URL) |
+| `THRONOS_NODE1_URL` | `https://thrchain.up.railway.app` |
+| `THRONOS_NODE2_URL` | `https://node-2.up.railway.app` |
+| `THRONOS_AI_CORE_URL` | `https://thronos-v3-6.onrender.com` (if needed) |
+| `LOG_LEVEL` | `info` (or `debug` for testing) |
+| `NIXPACKS_PYTHON_VERSION` | `3.11` |
+
+OIDC variables (`OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_SCOPE`) are only required when `KYC_AUTH_MODE=oidc`.
+
 ## Project Structure
 
 ```
