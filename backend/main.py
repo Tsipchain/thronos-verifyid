@@ -5,7 +5,7 @@ import pkgutil
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from core.config import settings
+from core.config import settings, validate_environment
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRouter
@@ -64,6 +64,7 @@ async def lifespan(app: FastAPI):
     logger.info("=== Application startup initiated ===")
 
     # MODULE_STARTUP_START
+    validate_environment()
     await initialize_database()
     await initialize_mock_data()
     await initialize_admin_user()

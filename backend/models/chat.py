@@ -1,10 +1,6 @@
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, Index
 from datetime import datetime
 from models.base import Base
-# Backwards-compatible aliases
-ChatMessages = ChatMessage
-ChatRooms = ChatRoom
-ChatRoomMembers = ChatRoomMember
 
 
 class Conversations(Base):
@@ -92,3 +88,12 @@ class UserPresence(Base):
     status_message = Column(String(255))
     last_active = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+# Backwards-compatible aliases (do NOT remove)
+ChatMessage = Messages
+ChatRoom = Conversations
+ChatRoomMember = ConversationParticipants
+ChatMessages = ChatMessage
+ChatRooms = ChatRoom
+ChatRoomMembers = ChatRoomMember
