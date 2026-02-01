@@ -31,6 +31,7 @@ class Verifications(Base):
     document_urls = Column(Text, nullable=True)  # JSON string of document URLs
     notes = Column(Text, nullable=True)
     reviewed_by = Column(String, nullable=True)
+    thronos_tx_hash = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
     completed_at = Column(DateTime, nullable=True)

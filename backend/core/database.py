@@ -193,7 +193,7 @@ class DatabaseManager:
             except ProgrammingError as e:
                 if isinstance(getattr(e, "orig", None), DuplicateTableError) or "already exists" in str(e):
                     self._initialized = True
-                    logger.info(f"Duplicate table/index creation: {e}, ignored.")
+                    logger.warning(f"Duplicate table/index creation: {e}, ignored.")
                 else:
                     logger.error(f"Failed to create tables: {e}")
                     raise
