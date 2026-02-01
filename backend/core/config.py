@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     debug: bool = False
     version: str = "1.0.0"
 
+    # Database
+    database_url: str | None = None
+
     # Server
     host: str = "0.0.0.0"
     port: int = 8000
