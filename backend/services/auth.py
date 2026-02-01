@@ -1,5 +1,8 @@
+import hashlib
 import logging
+import secrets
 import time
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional, Tuple
 
@@ -69,6 +72,55 @@ class AuthService:
 
         return token, expires_at, claims
 
+    @staticmethod
+    def _hash_password(password: str, salt: str) -> str:
+        return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 120_000).hex()
+
+    @staticmethod
+    def generate_password_hash(password: str) -> Tuple[str, str]:
+        salt = secrets.token_hex(16)
+        return salt, AuthService._hash_password(password, salt)
+
+    @staticmethod
+    def verify_password(password: str, salt: str, expected_hash: str) -> bool:
+        return AuthService._hash_password(password, salt) == expected_hash
+
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        result = await self.db.execute(select(User).where(User.email == email))
+        return result.scalar_one_or_none()
+
+    async def register_local_user(self, email: str, password: str, name: Optional[str] = None) -> User:
+        existing = await self.get_user_by_email(email)
+        if existing:
+            raise ValueError("Email already registered")
+
+        salt, password_hash = self.generate_password_hash(password)
+        user = User(
+            id=str(uuid.uuid4()),
+            email=email,
+            name=name,
+            role="client",
+            password_salt=salt,
+            password_hash=password_hash,
+        )
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def authenticate_local_user(self, email: str, password: str) -> Optional[User]:
+        user = await self.get_user_by_email(email)
+        if not user or not user.password_hash or not user.password_salt:
+            return None
+        if not user.is_active:
+            return None
+        if not self.verify_password(password, user.password_salt, user.password_hash):
+            return None
+        user.last_login = datetime.now(timezone.utc)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
     async def store_oidc_state(self, state: str, nonce: str, code_verifier: str):
         """Store OIDC state in database."""
         # Clean up expired states first
@@ -128,13 +180,14 @@ async def initialize_admin_user():
             if user.role != "admin":
                 user.role = "admin"
                 user.email = admin_user_email  # Update email too
+                user.is_active = True
                 await db.commit()
                 logger.info(f"✅ Updated user {admin_user_id} to admin role")
             else:
                 logger.info(f"✅ Admin user {admin_user_id} already exists")
         else:
             # Create new admin user
-            admin_user = User(id=admin_user_id, email=admin_user_email, role="admin")
+            admin_user = User(id=admin_user_id, email=admin_user_email, role="admin", is_active=True)
             db.add(admin_user)
             await db.commit()
             logger.info(f"✅ Created admin user: {admin_user_id} with email: {admin_user_email}")
