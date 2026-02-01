@@ -16,6 +16,13 @@ REQUIRED_ENV_VARS = (
     "THRONOS_ADMIN_SECRET",
 )
 
+FORBIDDEN_DB_ENV_VARS = (
+    "DB_URL",
+    "POSTGRES_URL",
+    "INTERNAL_DB_URL",
+    "SUPABASE_DB_URL",
+)
+
 OIDC_ENV_VARS = (
     "OIDC_ISSUER_URL",
     "OIDC_CLIENT_ID",
@@ -104,6 +111,13 @@ def validate_environment() -> None:
     missing = [name for name in REQUIRED_ENV_VARS if not os.getenv(name)]
     if missing:
         raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+
+    forbidden = [name for name in FORBIDDEN_DB_ENV_VARS if os.getenv(name)]
+    if forbidden:
+        raise ValueError(
+            "Forbidden database environment variables are set: "
+            f"{', '.join(forbidden)}. Use only DATABASE_URL."
+        )
 
     jwt_algorithm = os.getenv("JWT_ALGORITHM")
     if jwt_algorithm != "HS256":
