@@ -12,6 +12,7 @@ from asyncpg.exceptions import (
 from core.config import settings
 from sqlalchemy import DDL, text
 from sqlalchemy.engine import make_url
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import NullPool
@@ -189,6 +190,13 @@ class DatabaseManager:
             except (UniqueViolationError, DuplicateTableError) as e:
                 self._initialized = True
                 logger.info(f"Duplicate table creation: {e}, ignored.")
+            except ProgrammingError as e:
+                if isinstance(getattr(e, "orig", None), DuplicateTableError) or "already exists" in str(e):
+                    self._initialized = True
+                    logger.info(f"Duplicate table/index creation: {e}, ignored.")
+                else:
+                    logger.error(f"Failed to create tables: {e}")
+                    raise
             except Exception as e:
                 logger.error(f"Failed to create tables: {e}")
                 raise
