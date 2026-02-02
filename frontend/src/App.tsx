@@ -45,11 +45,11 @@ const App = () => {
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/admin" element={<Dashboard />} />
+            <Route path="/admin/*" element={<Dashboard />} />
             <Route path="/agent" element={<CallAgentDashboard />} />
             <Route path="/client" element={<ClientPortal />} />
             <Route path="/client/upload" element={<FileUpload />} />
-            <Route path="/dashboard" element={<DashboardRedirect />} />
+            <Route path="/dashboard/*" element={<Dashboard />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
             <Route path="*" element={<NotFound />} />
