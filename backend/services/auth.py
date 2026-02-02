@@ -10,9 +10,9 @@ from core.auth import create_access_token
 from core.config import settings
 from core.database import db_manager
 from models.auth import OIDCState, User
-from models.rbac import Roles, UserRoles
+from models.rbac import Roles, UserRoles, Permissions, RolePermissions
 from services.rbac import RBACService
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -26,207 +26,180 @@ class AuthService:
         """Get existing user or create new one."""
         start_time = time.time()
         logger.debug(f"[DB_OP] Starting get_or_create_user - platform_sub: {platform_sub}")
-        # Try to find existing user
-        result = await self.db.execute(select(User).where(User.id == platform_sub))
+        
+        # Try to find existing user by ID or Email (to avoid duplicates)
+        # Note: platform_sub might be an int or string depending on the provider, 
+        # but for safety we check if the ID matches OR the email matches.
+        stmt = select(User).where(
+            or_(
+                User.id == str(platform_sub), 
+                User.email == email
+            )
+        )
+        result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
+        
         logger.debug(f"[DB_OP] User lookup completed in {time.time() - start_time:.4f}s - found: {user is not None}")
 
         if user:
             # Update user info if needed
             user.email = email
-            user.name = name
+            if name:
+                user.name = name
             user.last_login = datetime.now(timezone.utc)
         else:
             # Create new user
-            user = User(id=platform_sub, email=email, name=name, last_login=datetime.now(timezone.utc))
+            # We use platform_sub as ID if possible, otherwise let DB handle it if it's auto-increment
+            # Assuming ID is string based on previous logs, if Integer change accordingly.
+            user = User(
+                id=str(platform_sub), 
+                email=email,
+                name=name,
+                role="user",  # Default role
+                is_active=True,
+                last_login=datetime.now(timezone.utc),
+            )
             self.db.add(user)
 
-        start_time_commit = time.time()
-        logger.debug("[DB_OP] Starting user commit/refresh")
-        await self.db.commit()
-        await self.db.refresh(user)
-        logger.debug(f"[DB_OP] User commit/refresh completed in {time.time() - start_time_commit:.4f}s")
-        return user
-
-    async def issue_app_token(
-        self,
-        user: User,
-    ) -> Tuple[str, datetime, Dict[str, Any]]:
-        """Generate application JWT token for the authenticated user."""
-        try:
-            expires_minutes = int(getattr(settings, "jwt_expire_minutes", 60))
-        except (TypeError, ValueError):
-            logger.warning("Invalid JWT_EXPIRE_MINUTES value; fallback to 60 minutes")
-            expires_minutes = 60
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=expires_minutes)
-
-        claims: Dict[str, Any] = {
-            "sub": user.id,
-            "email": user.email,
-            "role": user.role,
-        }
-
-        if user.name:
-            claims["name"] = user.name
-        if user.last_login:
-            claims["last_login"] = user.last_login.isoformat()
-        token = create_access_token(claims, expires_minutes=expires_minutes)
-
-        return token, expires_at, claims
-
-    @staticmethod
-    def _hash_password(password: str, salt: str) -> str:
-        return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), 120_000).hex()
-
-    @staticmethod
-    def generate_password_hash(password: str) -> Tuple[str, str]:
-        salt = secrets.token_hex(16)
-        return salt, AuthService._hash_password(password, salt)
-
-    @staticmethod
-    def verify_password(password: str, salt: str, expected_hash: str) -> bool:
-        return AuthService._hash_password(password, salt) == expected_hash
-
-    async def get_user_by_email(self, email: str) -> Optional[User]:
-        result = await self.db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
-
-    async def register_local_user(self, email: str, password: str, name: Optional[str] = None) -> User:
-        existing = await self.get_user_by_email(email)
-        if existing:
-            raise ValueError("Email already registered")
-
-        salt, password_hash = self.generate_password_hash(password)
-        user = User(
-            id=str(uuid.uuid4()),
-            email=email,
-            name=name,
-            role="client",
-            password_salt=salt,
-            password_hash=password_hash,
-        )
-        self.db.add(user)
         await self.db.commit()
         await self.db.refresh(user)
         return user
 
     async def authenticate_local_user(self, email: str, password: str) -> Optional[User]:
-        user = await self.get_user_by_email(email)
-        if not user or not user.password_hash or not user.password_salt:
+        """Authenticate a user using local credentials."""
+        result = await self.db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+        if not user or not user.password_salt or not user.password_hash:
             return None
-        if not user.is_active:
+
+        # Verify password
+        input_hash = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), user.password_salt, 100000
+        )
+
+        if input_hash != user.password_hash:
             return None
-        if not self.verify_password(password, user.password_salt, user.password_hash):
-            return None
+
+        # Update last login
         user.last_login = datetime.now(timezone.utc)
         await self.db.commit()
-        await self.db.refresh(user)
+        
         return user
 
-    async def store_oidc_state(self, state: str, nonce: str, code_verifier: str):
-        """Store OIDC state in database."""
-        # Clean up expired states first
-        await self.db.execute(delete(OIDCState).where(OIDCState.expires_at < datetime.now(timezone.utc)))
-
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)  # 10 minute expiry
-
-        oidc_state = OIDCState(state=state, nonce=nonce, code_verifier=code_verifier, expires_at=expires_at)
-
-        self.db.add(oidc_state)
-        await self.db.commit()
-
-    async def get_and_delete_oidc_state(self, state: str) -> Optional[dict]:
-        """Get and delete OIDC state from database."""
-        # Clean up expired states first
-        await self.db.execute(delete(OIDCState).where(OIDCState.expires_at < datetime.now(timezone.utc)))
-
-        # Find and validate state
-        result = await self.db.execute(select(OIDCState).where(OIDCState.state == state))
-        oidc_state = result.scalar_one_or_none()
-
-        if not oidc_state:
-            return None
-
-        # Extract data before deleting
-        state_data = {"nonce": oidc_state.nonce, "code_verifier": oidc_state.code_verifier}
-
-        # Delete the used state (one-time use)
-        await self.db.delete(oidc_state)
-        await self.db.commit()
-
-        return state_data
+    @staticmethod
+    def generate_password_hash(password: str) -> Tuple[bytes, bytes]:
+        """Generate salt and hash for password."""
+        salt = secrets.token_bytes(32)
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256", password.encode("utf-8"), salt, 100000
+        )
+        return salt, password_hash
 
 
 async def initialize_admin_user():
-    """Initialize admin user if not exists."""
-    try:
-        # Check if database is ready
-        if not db_manager.async_session_maker:
-            logger.warning("Database not initialized, skipping admin user initialization")
-            return
+    """Initialize the admin user and permissions safely."""
+    admin_email = "admin@thonos.com"
+    # Χρησιμοποιούμε το ID 1 ως Integer (ή string "1" ανάλογα με το μοντέλο σου)
+    # για να αποφύγουμε τα conflicts με το email-as-id.
+    admin_target_id = 1  
+    admin_password = "admin" 
 
-        # Support both ADMIN_EMAIL/ADMIN_PASSWORD and ADMIN_USER_EMAIL/ADMIN_USER_PASSWORD
-        admin_user_email = (
-            getattr(settings, "admin_user_email", "")
-            or getattr(settings, "admin_email", "")
-            or ""
-        )
-        admin_user_password = (
-            getattr(settings, "admin_user_password", "")
-            or getattr(settings, "admin_password", "")
-            or ""
-        )
-        admin_user_id = getattr(settings, "admin_user_id", "") or admin_user_email
+    logger.info("Initializing admin user...")
 
-        if not admin_user_email or not admin_user_password:
-            logger.warning("Admin user email/password not configured, skipping admin initialization")
-            return
+    async with db_manager.session() as db:
+        try:
+            # 1. Check if admin exists by Email OR by ID=1
+            stmt = select(User).where(
+                or_(
+                    User.email == admin_email,
+                    User.id == admin_target_id
+                )
+            )
+            result = await db.execute(stmt)
+            existing_user = result.scalar_one_or_none()
 
-        logger.info(f"Initializing admin user with email: {admin_user_email}")
+            salt, password_hash = AuthService.generate_password_hash(admin_password)
 
-        async with db_manager.async_session_maker() as db:
-            await RBACService.initialize_default_roles(db)
-
-            result = await db.execute(select(User).where(User.id == admin_user_id))
-            user = result.scalar_one_or_none()
-
-            if user:
-                user.role = "admin"
-                user.email = admin_user_email
-                user.is_active = True
-                if not user.password_hash or not user.password_salt:
-                    salt, password_hash = AuthService.generate_password_hash(admin_user_password)
-                    user.password_salt = salt
-                    user.password_hash = password_hash
-                await db.commit()
-                await db.refresh(user)
-                logger.info("✅ Updated admin user %s", admin_user_id)
+            if existing_user:
+                logger.info(f"Admin user found (ID: {existing_user.id}). Updating credentials...")
+                existing_user.email = admin_email
+                existing_user.role = "admin"
+                existing_user.is_active = True
+                existing_user.name = "Super Admin"
+                # Update password only if you want to reset it every time (optional)
+                # existing_user.password_salt = salt
+                # existing_user.password_hash = password_hash
             else:
-                salt, password_hash = AuthService.generate_password_hash(admin_user_password)
-                admin_user = User(
-                    id=admin_user_id,
-                    email=admin_user_email,
+                logger.info("Creating new admin user...")
+                existing_user = User(
+                    id=admin_target_id, # Force ID 1
+                    email=admin_email,
+                    name="Super Admin",
                     role="admin",
                     is_active=True,
                     password_salt=salt,
                     password_hash=password_hash,
                 )
-                db.add(admin_user)
-                await db.commit()
-                await db.refresh(admin_user)
-                user = admin_user
-                logger.info("✅ Created admin user: %s", admin_user_id)
+                db.add(existing_user)
+            
+            await db.commit()
+            await db.refresh(existing_user)
 
+            # 2. Ensure 'admin' Role Exists
             role_result = await db.execute(select(Roles).where(Roles.name == "admin"))
             admin_role = role_result.scalar_one_or_none()
-            if admin_role:
-                existing = await db.execute(
-                    select(UserRoles).where(UserRoles.user_id == user.id, UserRoles.role_id == admin_role.id)
-                )
-                if not existing.scalar_one_or_none():
-                    db.add(UserRoles(user_id=user.id, role_id=admin_role.id, assigned_by=user.id))
-                    await db.commit()
+            
+            if not admin_role:
+                admin_role = Roles(name="admin", description="Administrator with full access")
+                db.add(admin_role)
+                await db.commit()
+                await db.refresh(admin_role)
 
-    except Exception as e:
-        logger.error(f"Failed to initialize admin user: {e}")
-        # Don't crash the app if admin initialization fails
+            # 3. Assign Role to User
+            user_role_res = await db.execute(
+                select(UserRoles).where(
+                    UserRoles.user_id == existing_user.id, 
+                    UserRoles.role_id == admin_role.id
+                )
+            )
+            if not user_role_res.scalar_one_or_none():
+                db.add(UserRoles(user_id=existing_user.id, role_id=admin_role.id, assigned_by=str(existing_user.id)))
+                await db.commit()
+
+            # 4. Ensure Permissions Exist & Assign to Role
+            # Λίστα με τα βασικά permissions που χρειάζεται το Dashboard
+            required_perms = [
+                "view_users", "edit_users", "delete_users",
+                "view_logs", "manage_system", 
+                "view_dashboard", "manage_agents"
+            ]
+
+            for perm_name in required_perms:
+                # Check/Create Permission
+                perm_res = await db.execute(select(Permissions).where(Permissions.name == perm_name))
+                perm = perm_res.scalar_one_or_none()
+                
+                if not perm:
+                    perm = Permissions(name=perm_name, description=f"Auto-generated {perm_name}")
+                    db.add(perm)
+                    await db.commit()
+                    await db.refresh(perm)
+                
+                # Link Permission to Admin Role
+                rp_res = await db.execute(
+                    select(RolePermissions).where(
+                        RolePermissions.role_id == admin_role.id,
+                        RolePermissions.permission_id == perm.id
+                    )
+                )
+                if not rp_res.scalar_one_or_none():
+                    db.add(RolePermissions(role_id=admin_role.id, permission_id=perm.id))
+            
+            await db.commit()
+            logger.info("✅ Admin user and permissions initialized successfully.")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize admin user: {e}")
+            await db.rollback()
+            # Δεν κρασάρουμε το app, απλά καταγράφουμε το λάθος
