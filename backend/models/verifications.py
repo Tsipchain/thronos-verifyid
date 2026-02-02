@@ -18,7 +18,8 @@ class VerificationStatus(str, enum.Enum):
     REJECTED = "rejected"
     COMPLETED = "completed"
 
-class DocumentVerifications(Base):
+# Επιστρέφουμε στο όνομα που ψάχνει το Blockchain για να μη σκάει
+class Verifications(Base):
     __tablename__ = "verifications"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -33,14 +34,9 @@ class DocumentVerifications(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
-    # ΣΗΜΑΝΤΙΚΟ: Χρησιμοποιούμε string "VideoCallQueue" για να μην έχουμε import errors
+    # Χρησιμοποιούμε string reference για το VideoCallQueue
     video_calls = relationship("VideoCallQueue", back_populates="verification", cascade="all, delete-orphan")
 
-# ==========================================================
-# ΤΑ ALIASES ΠΟΥ ΣΩΖΟΥΝ ΤΟ STARTUP:
-# Ορίζουμε το Verifications (που ψάχνει το Blockchain) 
-# και το DocumentVerification (που ψάχνει το Router)
-# να δείχνουν στην ίδια κλάση.
-# ==========================================================
-Verifications = DocumentVerifications
-DocumentVerification = DocumentVerifications
+# Aliases για να μη χτυπάνε οι routers που ψάχνουν το 'DocumentVerifications'
+DocumentVerifications = Verifications
+DocumentVerification = Verifications
