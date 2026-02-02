@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { getAPIBaseURL } from '@/lib/config';
+import { authApi } from '@/lib/auth';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,24 +20,20 @@ export default function Login() {
     setLoading(true);
 
     try {
-      const response = await fetch(`${getAPIBaseURL()}/api/v1/auth/local/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, password })
-      });
-
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload?.detail || 'Invalid credentials');
+      await authApi.login(email, password);
+      const user = await authApi.getCurrentUser();
+      if (!user) {
+        navigate('/login');
+        return;
       }
 
-      if (payload?.token) {
-        localStorage.setItem('auth_token', payload.token);
+      if (user.role === 'admin' || user.role === 'manager') {
+        navigate('/admin');
+      } else if (user.role === 'agent') {
+        navigate('/agent');
+      } else {
+        navigate('/client');
       }
-
-      navigate('/dashboard');
     } catch (error) {
       const detail = (error as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string })?.data?.detail 
         || (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail 
