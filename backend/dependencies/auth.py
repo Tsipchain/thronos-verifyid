@@ -51,13 +51,24 @@ async def get_current_user(token: str = Depends(get_bearer_token)) -> UserRespon
         id=user_id,
         email=payload.get("email", ""),
         name=payload.get("name"),
-        role=payload.get("role", "user"),
+        role=payload.get("role", "client"),
         last_login=last_login,
     )
 
 
-async def get_admin_user(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
-    """Dependency to ensure current user has admin role."""
-    if current_user.role != "admin":
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+def _require_roles(allowed_roles: set[str]):
+    async def _dependency(current_user: UserResponse = Depends(get_current_user)) -> UserResponse:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient role permissions")
+        return current_user
+
+    return _dependency
+
+
+require_admin = _require_roles({"admin"})
+require_manager_or_admin = _require_roles({"manager", "admin"})
+require_agent_or_manager_or_admin = _require_roles({"agent", "manager", "admin"})
+
+
+async def get_admin_user(current_user: UserResponse = Depends(require_admin)) -> UserResponse:
     return current_user

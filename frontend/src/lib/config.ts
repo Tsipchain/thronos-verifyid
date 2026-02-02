@@ -67,6 +67,10 @@ export function getConfig() {
     return viteConfig;
   }
 
+  if (import.meta.env.PROD) {
+    throw new Error('Missing VITE_API_BASE_URL in production');
+  }
+
   // Finally fall back to default
   console.log('Using default config');
   return defaultConfig;
