@@ -5,8 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-# Εισάγουμε απευθείας το AsyncSessionLocal από εκεί που ορίζεται η βάση
-from core.database import db_manager, AsyncSessionLocal 
+from core.database import db_manager # Μόνο το db_manager
 from models.auth import User
 from models.rbac import Roles, UserRoles 
 from sqlalchemy import select, or_
@@ -47,13 +46,12 @@ class AuthService:
 
 async def initialize_admin_user():
     """
-    Διόρθωση AttributeError: Χρήση του AsyncSessionLocal απευθείας 
-    αντί για την ανύπαρκτη μέθοδο get_session().
+    Χρήση του db_manager.get_db() που είδαμε ότι λειτουργεί στα logs.
     """
     logger.info("🎬 Initializing admin user from schema specs...")
     
-    # Αλλαγή εδώ: Χρησιμοποιούμε το εργοστάσιο sessions απευθείας
-    async with AsyncSessionLocal() as db:
+    # Χρησιμοποιούμε το context manager που υπάρχει ήδη στο project σου
+    async with db_manager.get_db() as db: 
         try:
             admin_email = "admin@example.com"
             admin_pass = "admin123" 
@@ -64,9 +62,7 @@ async def initialize_admin_user():
             admin = result.scalar_one_or_none()
 
             if not admin:
-                logger.info(f"Admin not found. Creating...")
                 salt = secrets.token_hex(16)
-                
                 admin = User(
                     id=admin_id,
                     email=admin_email,
@@ -81,9 +77,9 @@ async def initialize_admin_user():
                 db.add(admin)
                 await db.commit()
                 await db.refresh(admin)
-                logger.info("✅ User 'admin' created.")
+                logger.info("✅ Admin created.")
 
-            # Διασφάλιση Ρόλου
+            # Ensure Role
             role_stmt = select(Roles).where(Roles.name == "admin")
             role_res = await db.execute(role_stmt)
             admin_role = role_res.scalar_one_or_none()
@@ -94,18 +90,16 @@ async def initialize_admin_user():
                 await db.commit()
                 await db.refresh(admin_role)
 
-            # Σύνδεση UserRoles
+            # Link Role
             ur_stmt = select(UserRoles).where(
                 UserRoles.user_id == admin.id, 
                 UserRoles.role_id == admin_role.id
             )
-            ur_res = await db.execute(ur_stmt)
-            if not ur_res.scalar_one_or_none():
+            if not (await db.execute(ur_stmt)).scalar_one_or_none():
                 db.add(UserRoles(user_id=admin.id, role_id=admin_role.id, assigned_by="system"))
                 await db.commit()
 
-            logger.info("🚀 Admin initialization successful.")
-
+            logger.info("🚀 Admin initialization complete.")
         except Exception as e:
             await db.rollback()
-            logger.error(f"❌ Failed to initialize admin: {str(e)}")
+            logger.error(f"❌ Error: {str(e)}")
