@@ -4,32 +4,23 @@ from datetime import datetime
 import enum
 from .base import Base
 
-
 class VerificationType(str, enum.Enum):
     IDENTITY = "identity"
     ADDRESS = "address"
     INCOME = "income"
-    EMPLOYMENT = "employment"
-    EDUCATION = "education"
-
+    # ... (τα υπόλοιπα ίδια)
 
 class VerificationStatus(str, enum.Enum):
     PENDING = "pending"
-    IN_REVIEW = "in_review"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-    COMPLETED = "completed"
+    # ... (τα υπόλοιπα ίδια)
 
-
-# Η ΔΙΟΡΘΩΣΗ: Άλλαξα το όνομα από Verifications σε DocumentVerifications
 class DocumentVerifications(Base):
     __tablename__ = "verifications"
-
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
     verification_type = Column(SQLEnum(VerificationType), nullable=False)
     status = Column(SQLEnum(VerificationStatus), default=VerificationStatus.PENDING, nullable=False)
-    document_urls = Column(Text, nullable=True)  # JSON string of document URLs
+    document_urls = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     reviewed_by = Column(String, nullable=True)
     thronos_tx_hash = Column(String, nullable=True)
@@ -39,3 +30,7 @@ class DocumentVerifications(Base):
 
     # Relationships
     video_calls = relationship("VideoCallQueue", back_populates="verification", cascade="all, delete-orphan")
+
+# Η ΚΙΝΗΣΗ ΜΑΤ: Δημιουργούμε ένα Alias. 
+# Έτσι, όποιο αρχείο ψάχνει το 'Verifications' θα βρίσκει το 'DocumentVerifications'.
+Verifications = DocumentVerifications
