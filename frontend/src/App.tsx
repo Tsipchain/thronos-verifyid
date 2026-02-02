@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { getAPIBaseURL } from '@/lib/config';
 import { LanguageProvider } from '@/contexts/LanguageContext';
-import { ThemeProvider } from '@/components/theme-provider'; // Η νέα προσθήκη
+import { ThemeProvider } from 'next-themes'; // ΔΙΟΡΘΩΣΗ: Χρήση του next-themes
 import Index from './pages/Index';
 import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
@@ -29,10 +29,10 @@ const App = () => {
 
   if (configError) {
     return (
-      <div className=\"min-h-screen flex items-center justify-center bg-slate-900 text-slate-100 p-6\">
-        <div className=\"max-w-lg text-center space-y-3\">
-          <h1 className=\"text-2xl font-semibold\">Configuration Error</h1>
-          <p className=\"text-slate-300\">{configError}</p>
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-slate-100 p-6">
+        <div className="max-w-lg text-center space-y-3">
+          <h1 className="text-2xl font-semibold">Configuration Error</h1>
+          <p className="text-slate-300">{configError}</p>
         </div>
       </div>
     );
@@ -40,23 +40,23 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme=\"dark\" storageKey=\"vite-ui-theme\">
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
         <LanguageProvider>
           <TooltipProvider>
             <Toaster />
             <BrowserRouter>
               <Routes>
-                <Route path=\"/\" element={<Index />} />
-                <Route path=\"/login\" element={<Login />} />
-                <Route path=\"/register\" element={<Register />} />
-                <Route path=\"/admin\" element={<Dashboard />} />
-                <Route path=\"/agent\" element={<CallAgentDashboard />} />
-                <Route path=\"/client\" element={<ClientPortal />} />
-                <Route path=\"/client/upload\" element={<FileUpload />} />
-                <Route path=\"/dashboard\" element={<DashboardRedirect />} />
-                <Route path=\"/chat\" element={<Chat />} />
-                <Route path=\"/dashboard/call-agent\" element={<CallAgentDashboard />} />
-                <Route path=\"*\" element={<NotFound />} />
+                <Route path="/" element={<Index />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/register" element={<Register />} />
+                <Route path="/admin" element={<Dashboard />} />
+                <Route path="/agent" element={<CallAgentDashboard />} />
+                <Route path="/client" element={<ClientPortal />} />
+                <Route path="/client/upload" element={<FileUpload />} />
+                <Route path="/dashboard" element={<DashboardRedirect />} />
+                <Route path="/chat" element={<Chat />} />
+                <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
+                <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
           </TooltipProvider>
