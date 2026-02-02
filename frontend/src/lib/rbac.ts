@@ -1,6 +1,4 @@
-import { createClient } from '@metagptx/web-sdk';
-
-const client = createClient();
+import { apiClient } from './api';
 
 export interface Permission {
   id: number;
@@ -34,13 +32,10 @@ class RBACManager {
     if (this.initialized) return;
     
     try {
-      const response = await client.apiCall.invoke({
-        url: '/api/v1/rbac/me/permissions',
-        method: 'GET'
-      });
-      
-      this.permissions = response.data.permissions;
-      this.roles = response.data.roles;
+      const response = await apiClient.get('/api/v1/rbac/me/permissions');
+
+      this.permissions = response.data.permissions ?? [];
+      this.roles = response.data.roles ?? [];
       this.initialized = true;
     } catch (error) {
       console.error('Failed to initialize RBAC:', error);
