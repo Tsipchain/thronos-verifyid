@@ -3,6 +3,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { getAPIBaseURL } from '@/lib/config';
+import { LanguageProvider } from '@/contexts/LanguageContext'; // Η προσθήκη που έλειπε
 import Index from './pages/Index';
 import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
@@ -38,24 +39,26 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/admin" element={<Dashboard />} />
-            <Route path="/agent" element={<CallAgentDashboard />} />
-            <Route path="/client" element={<ClientPortal />} />
-            <Route path="/client/upload" element={<FileUpload />} />
-            <Route path="/dashboard" element={<DashboardRedirect />} />
-            <Route path="/chat" element={<Chat />} />
-            <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <LanguageProvider> {/* Τυλίγουμε την εφαρμογή για να λειτουργούν οι μεταφράσεις */}
+        <TooltipProvider>
+          <Toaster />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/admin" element={<Dashboard />} />
+              <Route path="/agent" element={<CallAgentDashboard />} />
+              <Route path="/client" element={<ClientPortal />} />
+              <Route path="/client/upload" element={<FileUpload />} />
+              <Route path="/dashboard" element={<DashboardRedirect />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </LanguageProvider>
     </QueryClientProvider>
   );
 };
