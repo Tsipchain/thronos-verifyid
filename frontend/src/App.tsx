@@ -11,6 +11,8 @@ import CallAgentDashboard from './pages/CallAgentDashboard';
 import ClientPortal from './pages/ClientPortal';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import DashboardRedirect from './pages/DashboardRedirect';
+import FileUpload from './pages/FileUpload';
 
 const queryClient = new QueryClient();
 
@@ -46,7 +48,8 @@ const App = () => {
             <Route path="/admin" element={<Dashboard />} />
             <Route path="/agent" element={<CallAgentDashboard />} />
             <Route path="/client" element={<ClientPortal />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/client/upload" element={<FileUpload />} />
+            <Route path="/dashboard" element={<DashboardRedirect />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
             <Route path="*" element={<NotFound />} />

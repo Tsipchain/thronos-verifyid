@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { createClient } from '@metagptx/web-sdk';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -15,8 +14,8 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-
-const client = createClient();
+import { authApi } from '@/lib/auth';
+import { apiClient } from '@/lib/api';
 
 interface VerificationStatus {
   id: number;
@@ -27,12 +26,48 @@ interface VerificationStatus {
   notes?: string;
 }
 
+interface VerificationStatusResponse {
+  user_id: string;
+  overall_progress: number;
+  document_verification?: {
+    id: number;
+    document_type: string;
+    verification_status: string;
+    created_at: string;
+  };
+  age_verification?: {
+    id: number;
+    is_verified: boolean;
+    created_at: string;
+  };
+  kyc_form?: {
+    id: number;
+    status: string;
+    created_at: string;
+  };
+  video_verification?: {
+    id: number;
+    verification_status: string;
+    created_at: string;
+  };
+  digital_signature?: {
+    id: number;
+    created_at: string;
+  };
+  fraud_analysis?: {
+    id: number;
+    risk_level: string;
+    created_at: string;
+  };
+}
+
 export default function ClientPortal() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<{ email: string } | null>(null);
+  const [user, setUser] = useState<{ email: string; role?: string } | null>(null);
   const [verifications, setVerifications] = useState<VerificationStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  const [overallProgress, setOverallProgress] = useState(0);
 
   useEffect(() => {
     checkAuth();
@@ -41,43 +76,126 @@ export default function ClientPortal() {
 
   const checkAuth = async () => {
     try {
-      const userData = await client.auth.me();
-      setUser(userData.data as { email: string });
+      const userData = await authApi.getCurrentUser();
+      if (!userData) {
+        navigate('/login');
+        return;
+      }
+      setUser(userData as { email: string; role?: string });
     } catch (error) {
       navigate('/login');
     }
   };
 
+  const mapStatus = (status?: string): VerificationStatus['status'] => {
+    if (!status) return 'pending';
+    const normalized = status.toLowerCase();
+    if (['completed', 'complete', 'verified', 'approved', 'success'].some((value) => normalized.includes(value))) {
+      return 'completed';
+    }
+    if (['failed', 'rejected', 'deny', 'error'].some((value) => normalized.includes(value))) {
+      return 'failed';
+    }
+    if (['in_progress', 'processing', 'review', 'in progress'].some((value) => normalized.includes(value))) {
+      return 'in_progress';
+    }
+    if (['pending', 'submitted', 'queued'].some((value) => normalized.includes(value))) {
+      return 'pending';
+    }
+    return 'pending';
+  };
+
+  const statusToProgress = (status: VerificationStatus['status']) => {
+    switch (status) {
+      case 'completed':
+        return 100;
+      case 'in_progress':
+        return 60;
+      case 'failed':
+        return 0;
+      default:
+        return 20;
+    }
+  };
+
+  const buildVerificationList = (status: VerificationStatusResponse): VerificationStatus[] => {
+    const items: VerificationStatus[] = [];
+
+    if (status.document_verification) {
+      const state = mapStatus(status.document_verification.verification_status);
+      items.push({
+        id: status.document_verification.id,
+        document_type: status.document_verification.document_type || 'Document Verification',
+        status: state,
+        submitted_date: status.document_verification.created_at,
+        completion_percentage: statusToProgress(state),
+      });
+    }
+
+    if (status.age_verification) {
+      const state = status.age_verification.is_verified ? 'completed' : 'pending';
+      items.push({
+        id: status.age_verification.id,
+        document_type: 'Age Verification',
+        status: state,
+        submitted_date: status.age_verification.created_at,
+        completion_percentage: statusToProgress(state),
+      });
+    }
+
+    if (status.kyc_form) {
+      const state = mapStatus(status.kyc_form.status);
+      items.push({
+        id: status.kyc_form.id,
+        document_type: 'KYC Form',
+        status: state,
+        submitted_date: status.kyc_form.created_at,
+        completion_percentage: statusToProgress(state),
+      });
+    }
+
+    if (status.video_verification) {
+      const state = mapStatus(status.video_verification.verification_status);
+      items.push({
+        id: status.video_verification.id,
+        document_type: 'Video Verification',
+        status: state,
+        submitted_date: status.video_verification.created_at,
+        completion_percentage: statusToProgress(state),
+      });
+    }
+
+    if (status.digital_signature) {
+      items.push({
+        id: status.digital_signature.id,
+        document_type: 'Digital Signature',
+        status: 'completed',
+        submitted_date: status.digital_signature.created_at,
+        completion_percentage: statusToProgress('completed'),
+      });
+    }
+
+    if (status.fraud_analysis) {
+      const state = mapStatus(status.fraud_analysis.risk_level);
+      items.push({
+        id: status.fraud_analysis.id,
+        document_type: 'Fraud Analysis',
+        status: state,
+        submitted_date: status.fraud_analysis.created_at,
+        completion_percentage: statusToProgress(state),
+      });
+    }
+
+    return items;
+  };
+
   const loadVerifications = async () => {
     try {
-      // Mock data - replace with actual API call
-      const mockData: VerificationStatus[] = [
-        {
-          id: 1,
-          document_type: 'Passport',
-          status: 'completed',
-          submitted_date: '2024-01-20',
-          completion_percentage: 100,
-          notes: 'Verification completed successfully'
-        },
-        {
-          id: 2,
-          document_type: 'National ID',
-          status: 'in_progress',
-          submitted_date: '2024-01-25',
-          completion_percentage: 65,
-          notes: 'Under review by verification team'
-        },
-        {
-          id: 3,
-          document_type: 'Proof of Address',
-          status: 'pending',
-          submitted_date: '2024-01-27',
-          completion_percentage: 20,
-          notes: 'Awaiting document upload'
-        }
-      ];
-      setVerifications(mockData);
+      const response = await apiClient.get('/api/v1/verifications/status');
+      const statusData = response.data as VerificationStatusResponse;
+
+      setVerifications(buildVerificationList(statusData));
+      setOverallProgress(statusData?.overall_progress ?? 0);
       setLoading(false);
     } catch (error) {
       toast({
@@ -91,7 +209,7 @@ export default function ClientPortal() {
 
   const handleLogout = async () => {
     try {
-      await client.auth.logout();
+      await authApi.logout();
       navigate('/login');
     } catch (error) {
       toast({
@@ -130,10 +248,6 @@ export default function ClientPortal() {
     );
   }
 
-  const overallProgress = verifications.length > 0
-    ? Math.round(verifications.reduce((acc, v) => acc + v.completion_percentage, 0) / verifications.length)
-    : 0;
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
@@ -150,7 +264,9 @@ export default function ClientPortal() {
             <div className="flex items-center gap-4">
               <div className="text-right">
                 <p className="text-sm font-medium text-gray-900">{user?.email}</p>
-                <Badge variant="secondary" className="text-xs mt-1">Client</Badge>
+                <Badge variant="secondary" className="text-xs mt-1">
+                  {user?.role ?? 'client'}
+                </Badge>
               </div>
               <Button variant="outline" size="sm" onClick={handleLogout}>
                 <LogOut className="h-4 w-4 mr-2" />
