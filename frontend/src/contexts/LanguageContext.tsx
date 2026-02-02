@@ -1,51 +1,66 @@
-import { createContext, useContext, useState, ReactNode } from 'react';
-import { translations, Language, TranslationKey } from '@/lib/i18n';
+import { Toaster } from '@/components/ui/sonner';
+import { TooltipProvider } from '@/components/ui/tooltip';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { getAPIBaseURL } from '@/lib/config';
+import { LanguageProvider } from '@/contexts/LanguageContext'; // Η προσθήκη που έλειπε
+import Index from './pages/Index';
+import NotFound from './pages/NotFound';
+import Dashboard from './pages/Dashboard';
+import Chat from './pages/Chat';
+import CallAgentDashboard from './pages/CallAgentDashboard';
+import ClientPortal from './pages/ClientPortal';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import DashboardRedirect from './pages/DashboardRedirect';
+import FileUpload from './pages/FileUpload';
 
-interface LanguageContextType {
-  language: Language;
-  setLanguage: (lang: Language) => void;
-  t: (key: TranslationKey) => string;
-}
+const queryClient = new QueryClient();
 
-const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
+const App = () => {
+  let configError: string | null = null;
 
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Language>(() => {
-    const stored = localStorage.getItem('language') as Language;
-    if (stored && translations[stored]) return stored;
-    
-    // Detect browser language
-    const browserLang = navigator.language.toLowerCase();
-    if (browserLang.startsWith('el')) return 'gr';
-    if (browserLang.startsWith('de')) return 'ger';
-    if (browserLang.startsWith('ru')) return 'ru';
-    if (browserLang.startsWith('tr')) return 'tur';
-    if (browserLang.startsWith('it')) return 'ita';
-    if (browserLang.startsWith('es')) return 'esp';
-    
-    return 'en';
-  });
+  try {
+    getAPIBaseURL();
+  } catch (error) {
+    configError = error instanceof Error ? error.message : 'Missing VITE_API_BASE_URL in production';
+  }
 
-  const setLanguage = (lang: Language) => {
-    setLanguageState(lang);
-    localStorage.setItem('language', lang);
-  };
-
-  const t = (key: TranslationKey): string => {
-    return translations[language][key] || translations.en[key] || key;
-  };
+  if (configError) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-900 text-slate-100 p-6">
+        <div className="max-w-lg text-center space-y-3">
+          <h1 className="text-2xl font-semibold">Configuration Error</h1>
+          <p className="text-slate-300">{configError}</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
-      {children}
-    </LanguageContext.Provider>
+    <QueryClientProvider client={queryClient}>
+      <LanguageProvider> {/* Τυλίγουμε την εφαρμογή για να λειτουργούν οι μεταφράσεις */}
+        <TooltipProvider>
+          <Toaster />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/admin" element={<Dashboard />} />
+              <Route path="/agent" element={<CallAgentDashboard />} />
+              <Route path="/client" element={<ClientPortal />} />
+              <Route path="/client/upload" element={<FileUpload />} />
+              <Route path="/dashboard" element={<DashboardRedirect />} />
+              <Route path="/chat" element={<Chat />} />
+              <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </LanguageProvider>
+    </QueryClientProvider>
   );
-}
+};
 
-export function useLanguage() {
-  const context = useContext(LanguageContext);
-  if (context === undefined) {
-    throw new Error('useLanguage must be used within a LanguageProvider');
-  }
-  return context;
-}
+export default App;
