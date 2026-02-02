@@ -165,13 +165,24 @@ async def initialize_admin_user():
         logger.warning("Database not initialized, skipping admin user initialization")
         return
 
-    admin_user_email = getattr(settings, "admin_user_email", "") or ""
-    admin_user_password = getattr(settings, "admin_user_password", "") or ""
+    # Support both ADMIN_EMAIL/ADMIN_PASSWORD and ADMIN_USER_EMAIL/ADMIN_USER_PASSWORD
+    admin_user_email = (
+        getattr(settings, "admin_user_email", "")
+        or getattr(settings, "admin_email", "")
+        or ""
+    )
+    admin_user_password = (
+        getattr(settings, "admin_user_password", "")
+        or getattr(settings, "admin_password", "")
+        or ""
+    )
     admin_user_id = getattr(settings, "admin_user_id", "") or admin_user_email
 
     if not admin_user_email or not admin_user_password:
         logger.warning("Admin user email/password not configured, skipping admin initialization")
         return
+
+    logger.info(f"Initializing admin user with email: {admin_user_email}")
 
     async with db_manager.async_session_maker() as db:
         await RBACService.initialize_default_roles(db)
