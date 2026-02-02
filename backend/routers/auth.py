@@ -329,13 +329,26 @@ async def local_register(payload: LocalRegisterRequest, db: AsyncSession = Depen
 @router.post("/local/login", response_model=AuthTokenResponse)
 async def local_login(payload: LocalLoginRequest, db: AsyncSession = Depends(get_db)):
     """Login a local user with email/password."""
-    auth_service = AuthService(db)
-    user = await auth_service.authenticate_local_user(payload.email, payload.password)
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    try:
+        logger.info(f"[local_login] Attempting login for email: {payload.email}")
+        auth_service = AuthService(db)
+        user = await auth_service.authenticate_local_user(payload.email, payload.password)
+        if not user:
+            logger.warning(f"[local_login] Invalid credentials for email: {payload.email}")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
-    token, _, _ = await auth_service.issue_app_token(user=user)
-    return AuthTokenResponse(token=token)
+        logger.info(f"[local_login] User authenticated: {user.id}, issuing token")
+        token, _, _ = await auth_service.issue_app_token(user=user)
+        logger.info(f"[local_login] Token issued successfully for user: {user.id}")
+        return AuthTokenResponse(token=token)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"[local_login] Unexpected error during login: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Login failed: {str(e)}"
+        )
 
 
 @router.get("/logout")
