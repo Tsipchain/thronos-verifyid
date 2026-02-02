@@ -45,3 +45,4 @@ DocumentVerification = Verifications
 AgeVerifications = Verifications
 AgeVerification = Verifications
 KYCForms = Verifications
+VideoVerifications = Verifications
