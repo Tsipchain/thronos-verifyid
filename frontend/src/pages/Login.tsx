@@ -93,14 +93,18 @@ export default function Login() {
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
-          
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg">
-            <p className="text-sm text-gray-600 font-medium mb-2">Demo Accounts:</p>
-            <div className="space-y-1 text-xs text-gray-600">
-              <p>• <strong>KYC Agent:</strong> kyc@company.com</p>
-              <p>• <strong>IT Staff:</strong> it@company.com</p>
-              <p>• <strong>Management:</strong> manager@company.com</p>
-            </div>
+
+          <div className="mt-6 p-4 bg-blue-50 rounded-lg text-center">
+            <p className="text-sm text-gray-600 font-medium mb-2">Enterprise Solution</p>
+            <p className="text-xs text-gray-500 mb-3">
+              Interested in our identity verification platform for your business?
+            </p>
+            <a
+              href="mailto:contact@thonos.com?subject=B2B%20Inquiry%20-%20VerifyID%20Platform"
+              className="inline-flex items-center justify-center px-4 py-2 text-sm font-medium text-blue-600 bg-white border border-blue-300 rounded-md hover:bg-blue-50 transition-colors"
+            >
+              Contact Sales
+            </a>
           </div>
         </CardContent>
       </Card>
