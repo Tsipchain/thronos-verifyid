@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from core.database import db_manager
+from core.database import get_db
 from models.auth import User
 from models.rbac import Roles, UserRoles 
 from sqlalchemy import select, or_
@@ -59,7 +59,7 @@ async def initialize_admin_user():
     logger.info("🎬 Initializing Admin & Roles...")
     
     # Χρησιμοποιούμε async for γιατί το get_db είναι generator
-    async for db in db_manager.get_db():
+    async for db in get_db():
         try:
             # --- 1. Admin User ---
             admin_email = "admin@example.com"
