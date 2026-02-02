@@ -72,6 +72,20 @@ class RPApi {
     }
   }
 
+  async register(email: string, password: string, name?: string) {
+    try {
+      const response = await this.client.post(
+        `${this.getBaseURL()}/api/v1/auth/local/register`,
+        { email, password, name }
+      );
+      setAuthToken(response.data.token);
+    } catch (error) {
+      throw new Error(
+        error.response?.data?.detail || 'Failed to register'
+      );
+    }
+  }
+
   async logout() {
     try {
       clearAuthToken();

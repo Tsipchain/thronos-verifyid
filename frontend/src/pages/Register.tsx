@@ -6,6 +6,7 @@ import { Shield } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { authApi } from '@/lib/auth';
 
 export default function Register() {
   const navigate = useNavigate();
@@ -16,17 +17,25 @@ export default function Register() {
     confirmPassword: ''
   });
 
-  const handleRegister = (e: React.FormEvent) => {
+  const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.password !== formData.confirmPassword) {
       toast.error('Passwords do not match');
       return;
     }
-    if (formData.fullName && formData.email && formData.password) {
-      toast.success('Account created successfully!');
-      navigate('/dashboard');
-    } else {
+
+    if (!formData.fullName || !formData.email || !formData.password) {
       toast.error('Please fill in all fields');
+      return;
+    }
+
+    try {
+      await authApi.register(formData.email, formData.password, formData.fullName);
+      toast.success('Account created successfully!');
+      navigate('/client');
+    } catch (error) {
+      const detail = (error as { message?: string })?.message || 'Registration failed';
+      toast.error(detail);
     }
   };
 
