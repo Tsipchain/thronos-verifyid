@@ -18,7 +18,6 @@ class VerificationStatus(str, enum.Enum):
     REJECTED = "rejected"
     COMPLETED = "completed"
 
-# ΤΟ ΟΝΟΜΑ ΠΟΥ ΘΕΛΕΙ ΤΟ BLOCKCHAIN ΚΑΙ ΤΑ LOGS ΣΟΥ
 class Verifications(Base):
     __tablename__ = "verifications"
 
@@ -34,9 +33,12 @@ class Verifications(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
-    # Χρησιμοποιούμε string reference για να μην κολλάει το startup
+    # ΣΧΕΣΕΙΣ (Εδώ ήταν το πρόβλημα)
     video_calls = relationship("VideoCallQueue", back_populates="verification", cascade="all, delete-orphan")
+    
+    # ΠΡΟΣΘΕΣΕ ΑΥΤΗ ΤΗ ΓΡΑΜΜΗ - Αυτό ψάχνει το Blockchain Transactions
+    blockchain_txs = relationship("BlockchainTransactions", back_populates="verification")
 
-# ΑΠΑΡΑΙΤΗΤΑ ΓΙΑ ΝΑ ΜΗΝ ΣΚΑΝΕ ΤΑ ROUTERS ΚΑΙ ΤΟ VIDEO CALL
+# Aliases για συμβατότητα
 DocumentVerifications = Verifications
 DocumentVerification = Verifications
