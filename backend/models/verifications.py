@@ -21,7 +21,8 @@ class VerificationStatus(str, enum.Enum):
     COMPLETED = "completed"
 
 
-class Verifications(Base):
+# Η ΔΙΟΡΘΩΣΗ: Άλλαξα το όνομα από Verifications σε DocumentVerifications
+class DocumentVerifications(Base):
     __tablename__ = "verifications"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -38,4 +39,3 @@ class Verifications(Base):
 
     # Relationships
     video_calls = relationship("VideoCallQueue", back_populates="verification", cascade="all, delete-orphan")
-    blockchain_txs = relationship("BlockchainTransactions", back_populates="verification", cascade="all, delete-orphan")
