@@ -86,17 +86,24 @@ app = FastAPI(
 
 
 # MODULE_MIDDLEWARE_START
+# Default origins for production deployments
+DEFAULT_ORIGINS = [
+    "https://thronos-verifyid.vercel.app",
+    "https://thronos-verifyid.up.railway.app",
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+
 cors_allow_origins = [
     origin.strip()
     for origin in os.getenv("CORS_ALLOW_ORIGINS", "").split(",")
     if origin.strip()
-]
+] or DEFAULT_ORIGINS
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_allow_origins or ["*"],
-    allow_origin_regex=None if cors_allow_origins else r".*",
-    allow_credentials=False,
+    allow_origins=cors_allow_origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],

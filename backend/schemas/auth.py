@@ -49,6 +49,15 @@ class RoleUpdateRequest(BaseModel):
     role: str
 
 
+class AdminCreateUserRequest(BaseModel):
+    """Request body for admin to create a new user with a specific role."""
+
+    email: str
+    password: str
+    name: Optional[str] = None
+    role: str = "client"  # admin, manager, agent, client
+
+
 class PlatformTokenExchangeRequest(BaseModel):
     """Request body for exchanging Platform token for app token."""
 
