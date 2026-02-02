@@ -7,7 +7,8 @@ from typing import Optional, Tuple
 
 from core.database import db_manager
 from models.auth import User
-from models.rbac import Roles, UserRoles, Permissions, RolePermissions
+# ΑΦΑΙΡΕΣΑΜΕ τα Permissions/RolePermissions που έκαναν το crash
+from models.rbac import Roles, UserRoles 
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -55,7 +56,6 @@ class AuthService:
 
     async def authenticate_local_user(self, email: str, password: str) -> Optional[User]:
         """Authenticate a user using local credentials."""
-        # Use scalar_one_or_none to avoid MultipleResultsFound crashes
         result = await self.db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
 
@@ -83,9 +83,8 @@ class AuthService:
 
 
 async def initialize_admin_user():
-    """Initialize the admin user and permissions safely without crashing."""
+    """Initialize the admin user safely without crashing."""
     admin_email = "admin@thonos.com"
-    # Χρησιμοποιούμε το ID 1 (Integer) για συνέπεια με τη βάση σου
     admin_target_id = 1 
     admin_password = "admin" 
 
@@ -94,7 +93,6 @@ async def initialize_admin_user():
     async with db_manager.session() as db:
         try:
             # 1. SMART CHECK: Find admin by Email OR ID=1
-            # This prevents the MultipleResultsFound error seen in logs
             stmt = select(User).where(
                 or_(
                     User.email == admin_email,
@@ -107,14 +105,15 @@ async def initialize_admin_user():
             salt, password_hash = AuthService.generate_password_hash(admin_password)
 
             if existing_user:
-                logger.info(f"✅ Admin found (ID: {existing_user.id}). Updating profile...")
-                existing_user.email = admin_email
-                existing_user.role = "admin"
-                existing_user.name = "Super Admin"
+                logger.info(f"✅ Admin found (ID: {existing_user.id}). Checking integrity...")
+                # Update critical fields only
+                if existing_user.email != admin_email:
+                    existing_user.email = admin_email
+                if existing_user.role != "admin":
+                    existing_user.role = "admin"
                 existing_user.is_active = True
-                # Optional: Reset password on deploy if needed
-                # existing_user.password_salt = salt
-                # existing_user.password_hash = password_hash
+                if not existing_user.name:
+                    existing_user.name = "Super Admin"
             else:
                 logger.info("Creating NEW admin user with ID 1...")
                 existing_user = User(
@@ -141,7 +140,7 @@ async def initialize_admin_user():
                 await db.commit()
                 await db.refresh(admin_role)
 
-            # 3. Link User -> Role (Safe Insert)
+            # 3. Link User -> Role
             ur_res = await db.execute(
                 select(UserRoles).where(
                     UserRoles.user_id == existing_user.id, 
@@ -149,43 +148,18 @@ async def initialize_admin_user():
                 )
             )
             if not ur_res.scalar_one_or_none():
-                # Note: assigned_by needs to be string if your DB expects string
+                # Χρησιμοποιούμε string για το assigned_by για ασφάλεια
                 db.add(UserRoles(user_id=existing_user.id, role_id=admin_role.id, assigned_by=str(existing_user.id)))
                 await db.commit()
-
-            # 4. Auto-Generate & Link Permissions (So Modals always work)
-            all_perms = [
-                "view_users", "edit_users", "delete_users",
-                "view_logs", "manage_system", 
-                "view_dashboard", "manage_agents", 
-                "view_settings", "edit_settings"
-            ]
-
-            for perm_name in all_perms:
-                # Find or Create Permission
-                p_res = await db.execute(select(Permissions).where(Permissions.name == perm_name))
-                perm = p_res.scalar_one_or_none()
-                
-                if not perm:
-                    perm = Permissions(name=perm_name, description=f"Auto {perm_name}")
-                    db.add(perm)
-                    await db.commit()
-                    await db.refresh(perm)
-                
-                # Link Permission -> Role
-                rp_res = await db.execute(
-                    select(RolePermissions).where(
-                        RolePermissions.role_id == admin_role.id,
-                        RolePermissions.permission_id == perm.id
-                    )
-                )
-                if not rp_res.scalar_one_or_none():
-                    db.add(RolePermissions(role_id=admin_role.id, permission_id=perm.id))
             
-            await db.commit()
-            logger.info("✅ Admin setup complete. Dashboard ready.")
+            # ΣΗΜΕΙΩΣΗ: Αφαιρέσαμε το κομμάτι που φτιάχνει Permissions 
+            # γιατί λείπουν τα μοντέλα από τον κώδικα (models/rbac.py).
+            # Αφού τα έτρεξες με SQL, είσαι καλυμμένος!
+
+            logger.info("✅ Admin setup complete.")
 
         except Exception as e:
             logger.error(f"⚠️ Admin Init Warning: {e}")
             await db.rollback()
-            # We catch the error so the app doesn't crash on deploy
+            # Το catch εδώ εξασφαλίζει ότι ακόμα και αν κάτι πάει στραβά, 
+            # το app θα ξεκινήσει κανονικά!
