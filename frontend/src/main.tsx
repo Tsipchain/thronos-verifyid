@@ -4,10 +4,14 @@ import { LanguageProvider } from './contexts/LanguageContext';
 import App from './App.tsx';
 import './index.css';
 
-createRoot(document.getElementById('root')!).render(
-  <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-    <LanguageProvider>
-      <App />
-    </LanguageProvider>
-  </ThemeProvider>
-);
+const container = document.getElementById('root');
+if (container) {
+  const root = createRoot(container);
+  root.render(
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+      <LanguageProvider>
+        <App />
+      </LanguageProvider>
+    </ThemeProvider>
+  );
+}
