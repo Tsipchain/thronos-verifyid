@@ -21,6 +21,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from models.auth import User
 from schemas.auth import (
+    AuthTokenResponse,
+    LocalLoginRequest,
+    LocalRegisterRequest,
     PlatformTokenExchangeRequest,
     TokenExchangeResponse,
     UserResponse,
@@ -305,6 +308,34 @@ async def exchange_platform_token(
 async def get_current_user_info(current_user: UserResponse = Depends(get_current_user)):
     """Get current user info."""
     return current_user
+
+
+@router.post("/local/register", response_model=AuthTokenResponse)
+async def local_register(payload: LocalRegisterRequest, db: AsyncSession = Depends(get_db)):
+    """Register a local user with email/password."""
+    if not payload.password or len(payload.password) < 8:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be at least 8 characters")
+
+    auth_service = AuthService(db)
+    try:
+        user = await auth_service.register_local_user(payload.email, payload.password, payload.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    token, _, _ = await auth_service.issue_app_token(user=user)
+    return AuthTokenResponse(token=token)
+
+
+@router.post("/local/login", response_model=AuthTokenResponse)
+async def local_login(payload: LocalLoginRequest, db: AsyncSession = Depends(get_db)):
+    """Login a local user with email/password."""
+    auth_service = AuthService(db)
+    user = await auth_service.authenticate_local_user(payload.email, payload.password)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+
+    token, _, _ = await auth_service.issue_app_token(user=user)
+    return AuthTokenResponse(token=token)
 
 
 @router.get("/logout")
