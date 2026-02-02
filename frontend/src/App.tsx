@@ -40,6 +40,7 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
+      {/* Χρησιμοποιούμε το ThemeProvider με τις σωστές παραμέτρους για Vite */}
       <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
         <LanguageProvider>
           <TooltipProvider>
