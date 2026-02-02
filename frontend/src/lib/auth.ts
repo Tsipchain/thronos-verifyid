@@ -1,6 +1,12 @@
 import axios, { AxiosInstance } from 'axios';
 import { getAPIBaseURL } from './config';
 
+const TOKEN_KEY = 'auth_token';
+
+export const getAuthToken = () => localStorage.getItem(TOKEN_KEY);
+export const setAuthToken = (token: string) => localStorage.setItem(TOKEN_KEY, token);
+export const clearAuthToken = () => localStorage.removeItem(TOKEN_KEY);
+
 class RPApi {
   private client: AxiosInstance;
 
@@ -11,6 +17,25 @@ class RPApi {
         'Content-Type': 'application/json',
       },
     });
+
+    this.client.interceptors.request.use((config) => {
+      const token = getAuthToken();
+      if (token) {
+        config.headers = config.headers ?? {};
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    });
+
+    this.client.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          clearAuthToken();
+        }
+        return Promise.reject(error);
+      }
+    );
   }
 
   private getBaseURL() {
@@ -33,28 +58,23 @@ class RPApi {
     }
   }
 
-  async login() {
+  async login(email: string, password: string) {
     try {
-      const response = await this.client.get(
-        `${this.getBaseURL()}/api/v1/auth/login`
+      const response = await this.client.post(
+        `${this.getBaseURL()}/api/v1/auth/local/login`,
+        { email, password }
       );
-      // The backend will redirect to OIDC provider
-      // SSO will work via cookies automatically
-      window.location.href = response.data.redirect_url;
+      setAuthToken(response.data.token);
     } catch (error) {
       throw new Error(
-        error.response?.data?.detail || 'Failed to initiate login'
+        error.response?.data?.detail || 'Failed to login'
       );
     }
   }
 
   async logout() {
     try {
-      const response = await this.client.get(
-        `${this.getBaseURL()}/api/v1/auth/logout`
-      );
-      // The backend will redirect to OIDC provider logout
-      window.location.href = response.data.redirect_url;
+      clearAuthToken();
     } catch (error) {
       throw new Error(error.response?.data?.detail || 'Failed to logout');
     }

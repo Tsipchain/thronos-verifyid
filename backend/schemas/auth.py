@@ -8,11 +8,45 @@ class UserResponse(BaseModel):
     id: str  # Now a string UUID (platform sub)
     email: str
     name: Optional[str] = None
-    role: str = "user"  # user/admin
+    role: str = "client"  # client/agent/manager/admin
     last_login: Optional[datetime] = None
 
     class Config:
         from_attributes = True
+
+
+class AdminUserResponse(BaseModel):
+    id: str
+    email: str
+    name: Optional[str] = None
+    role: str
+    is_active: bool
+    productivity_points: int
+    created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class LocalRegisterRequest(BaseModel):
+    email: str
+    password: str
+    name: Optional[str] = None
+
+
+class LocalLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class AuthTokenResponse(BaseModel):
+    token: str
+    token_type: str = "Bearer"
+
+
+class RoleUpdateRequest(BaseModel):
+    role: str
 
 
 class PlatformTokenExchangeRequest(BaseModel):

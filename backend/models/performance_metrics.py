@@ -25,7 +25,7 @@ class QueryPerformanceLog(Base):
         Index('idx_query_hash_created', 'query_hash', 'created_at'),
         Index('idx_execution_time', 'execution_time_ms'),
         Index('idx_query_endpoint_created', 'endpoint', 'created_at'),
-        Index('idx_created_at', 'created_at'),
+        Index('idx_query_perf_created_at', 'created_at'),
     )
 
 
@@ -52,7 +52,7 @@ class APIPerformanceLog(Base):
         Index('idx_api_endpoint_created', 'endpoint', 'created_at'),
         Index('idx_response_time', 'response_time_ms'),
         Index('idx_status_code', 'status_code'),
-        Index('idx_created_at', 'created_at'),
+        Index('idx_api_perf_created_at', 'created_at'),
     )
 
 
