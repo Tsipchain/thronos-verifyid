@@ -42,3 +42,5 @@ class Verifications(Base):
 # Aliases για συμβατότητα
 DocumentVerifications = Verifications
 DocumentVerification = Verifications
+AgeVerifications = Verifications
+AgeVerification = Verifications
