@@ -10,6 +10,8 @@ from core.auth import create_access_token
 from core.config import settings
 from core.database import db_manager
 from models.auth import OIDCState, User
+from models.rbac import Roles, UserRoles
+from services.rbac import RBACService
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -156,38 +158,60 @@ class AuthService:
 
 
 async def initialize_admin_user():
-    """Initialize admin user if not exists"""
-    
+    """Initialize admin user if not exists."""
+
     # Check if database is ready
     if not db_manager.async_session_maker:
         logger.warning("Database not initialized, skipping admin user initialization")
         return
 
-    admin_user_id = getattr(settings, "admin_user_id", "")
-    admin_user_email = getattr(settings, "admin_user_email", "")
+    admin_user_email = getattr(settings, "admin_user_email", "") or ""
+    admin_user_password = getattr(settings, "admin_user_password", "") or ""
+    admin_user_id = getattr(settings, "admin_user_id", "") or admin_user_email
 
-    if not admin_user_id or not admin_user_email:
-        logger.warning("Admin user ID or email not configured, skipping admin initialization")
+    if not admin_user_email or not admin_user_password:
+        logger.warning("Admin user email/password not configured, skipping admin initialization")
         return
 
     async with db_manager.async_session_maker() as db:
-        # Check if admin user already exists
+        await RBACService.initialize_default_roles(db)
+
         result = await db.execute(select(User).where(User.id == admin_user_id))
         user = result.scalar_one_or_none()
 
         if user:
-            # Update existing user to admin if not already
-            if user.role != "admin":
-                user.role = "admin"
-                user.email = admin_user_email  # Update email too
-                user.is_active = True
-                await db.commit()
-                logger.info(f"✅ Updated user {admin_user_id} to admin role")
-            else:
-                logger.info(f"✅ Admin user {admin_user_id} already exists")
+            user.role = "admin"
+            user.email = admin_user_email
+            user.is_active = True
+            if not user.password_hash or not user.password_salt:
+                salt, password_hash = AuthService.generate_password_hash(admin_user_password)
+                user.password_salt = salt
+                user.password_hash = password_hash
+            await db.commit()
+            await db.refresh(user)
+            logger.info("✅ Updated admin user %s", admin_user_id)
         else:
-            # Create new admin user
-            admin_user = User(id=admin_user_id, email=admin_user_email, role="admin", is_active=True)
+            salt, password_hash = AuthService.generate_password_hash(admin_user_password)
+            admin_user = User(
+                id=admin_user_id,
+                email=admin_user_email,
+                role="admin",
+                is_active=True,
+                password_salt=salt,
+                password_hash=password_hash,
+            )
             db.add(admin_user)
             await db.commit()
-            logger.info(f"✅ Created admin user: {admin_user_id} with email: {admin_user_email}")
+            await db.refresh(admin_user)
+            user = admin_user
+            logger.info("✅ Created admin user: %s", admin_user_id)
+
+        role_result = await db.execute(select(Roles).where(Roles.name == "admin"))
+        admin_role = role_result.scalar_one_or_none()
+        if admin_role:
+            existing = await db.execute(
+                select(UserRoles).where(UserRoles.user_id == user.id, UserRoles.role_id == admin_role.id)
+            )
+            if not existing.scalar_one_or_none():
+                db.add(UserRoles(user_id=user.id, role_id=admin_role.id, assigned_by=user.id))
+                await db.commit()

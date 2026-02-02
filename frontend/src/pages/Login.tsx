@@ -1,14 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@metagptx/web-sdk';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-
-const client = createClient();
+import { authApi } from '@/lib/auth';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -22,7 +20,17 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await client.auth.toLogin();
+      await authApi.login(email, password);
+      const user = await authApi.getCurrentUser();
+      const role = user?.role ?? 'client';
+
+      if (role === 'admin' || role === 'manager') {
+        navigate('/admin');
+      } else if (role === 'agent') {
+        navigate('/agent');
+      } else {
+        navigate('/client');
+      }
     } catch (error) {
       const detail = (error as { data?: { detail?: string }; response?: { data?: { detail?: string } }; message?: string })?.data?.detail 
         || (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail 
