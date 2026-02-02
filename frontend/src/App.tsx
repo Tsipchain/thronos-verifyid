@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { getAPIBaseURL } from '@/lib/config';
 import { LanguageProvider } from '@/contexts/LanguageContext';
-import { ThemeProvider } from 'next-themes'; // ΔΙΟΡΘΩΣΗ: Χρήση του next-themes
+import { ThemeProvider } from 'next-themes'; 
 import Index from './pages/Index';
 import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
@@ -40,7 +40,7 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
+      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
         <LanguageProvider>
           <TooltipProvider>
             <Toaster />
