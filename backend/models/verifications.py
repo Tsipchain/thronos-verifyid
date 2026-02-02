@@ -8,14 +8,19 @@ class VerificationType(str, enum.Enum):
     IDENTITY = "identity"
     ADDRESS = "address"
     INCOME = "income"
-    # ... (τα υπόλοιπα ίδια)
+    EMPLOYMENT = "employment"
+    EDUCATION = "education"
 
 class VerificationStatus(str, enum.Enum):
     PENDING = "pending"
-    # ... (τα υπόλοιπα ίδια)
+    IN_REVIEW = "in_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    COMPLETED = "completed"
 
 class DocumentVerifications(Base):
     __tablename__ = "verifications"
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
     verification_type = Column(SQLEnum(VerificationType), nullable=False)
@@ -28,9 +33,9 @@ class DocumentVerifications(Base):
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)
     completed_at = Column(DateTime, nullable=True)
 
-    # Relationships
+    # Η ΣΗΜΑΝΤΙΚΗ ΑΛΛΑΓΗ: String reference για να μην κρασάρει το κυκλικό import
     video_calls = relationship("VideoCallQueue", back_populates="verification", cascade="all, delete-orphan")
 
-# Η ΚΙΝΗΣΗ ΜΑΤ: Δημιουργούμε ένα Alias. 
-# Έτσι, όποιο αρχείο ψάχνει το 'Verifications' θα βρίσκει το 'DocumentVerifications'.
+# Απαραίτητα Aliases για να παίζουν τα routers και οι άλλες κλάσεις
 Verifications = DocumentVerifications
+DocumentVerification = DocumentVerifications
