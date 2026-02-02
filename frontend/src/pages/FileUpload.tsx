@@ -1,7 +1,7 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@metagptx/web-sdk';
-import { rbac } from '@/lib/rbac';
+import { authApi } from '@/lib/auth';
+import { apiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -20,8 +20,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDropzone } from 'react-dropzone';
-
-const client = createClient();
 
 interface UploadedFile {
   id: string;
@@ -54,6 +52,17 @@ export default function FileUpload() {
   const { toast } = useToast();
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [uploading, setUploading] = useState(false);
+
+  useEffect(() => {
+    const ensureAuth = async () => {
+      const user = await authApi.getCurrentUser();
+      if (!user) {
+        navigate('/login');
+      }
+    };
+
+    ensureAuth();
+  }, [navigate]);
 
   const validateFile = (file: File): string | null => {
     // Check file type
@@ -141,13 +150,9 @@ export default function FileUpload() {
       ));
 
       // Step 1: Get upload URL from backend
-      const urlResponse = await client.apiCall.invoke({
-        url: '/api/v1/storage/upload-url',
-        method: 'POST',
-        data: {
-          bucket_name: BUCKET_NAME,
-          object_key: objectKey
-        }
+      const urlResponse = await apiClient.post('/api/v1/storage/upload-url', {
+        bucket_name: BUCKET_NAME,
+        object_key: objectKey,
       });
 
       const uploadUrl = urlResponse.data.upload_url;
@@ -239,13 +244,9 @@ export default function FileUpload() {
 
   const downloadFile = async (file: UploadedFile) => {
     try {
-      const response = await client.apiCall.invoke({
-        url: '/api/v1/storage/download-url',
-        method: 'POST',
-        data: {
-          bucket_name: file.bucket_name,
-          object_key: file.object_key
-        }
+      const response = await apiClient.post('/api/v1/storage/download-url', {
+        bucket_name: file.bucket_name,
+        object_key: file.object_key,
       });
 
       const downloadUrl = response.data.download_url;

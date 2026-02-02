@@ -46,8 +46,16 @@ export async function loadRuntimeConfig(): Promise<void> {
 
 // Get current configuration
 export function getConfig() {
-  // If config is still loading, return default config to avoid using stale Vite env vars
+  // If config is still loading, use Vite env in prod to avoid defaulting to localhost
   if (configLoading) {
+    if (import.meta.env.VITE_API_BASE_URL) {
+      return {
+        API_BASE_URL: import.meta.env.VITE_API_BASE_URL,
+      };
+    }
+    if (import.meta.env.PROD) {
+      throw new Error('Missing VITE_API_BASE_URL in production');
+    }
     console.log('Config still loading, using default config');
     return defaultConfig;
   }
@@ -65,6 +73,10 @@ export function getConfig() {
     };
     console.log('Using Vite environment config');
     return viteConfig;
+  }
+
+  if (import.meta.env.PROD) {
+    throw new Error('Missing VITE_API_BASE_URL in production');
   }
 
   // Finally fall back to default

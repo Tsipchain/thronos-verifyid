@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createClient } from '@metagptx/web-sdk';
 import { rbac } from '@/lib/rbac';
+import { authApi } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -21,12 +21,9 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
 
-const client = createClient();
-
 interface UserData {
-  data: {
-    email: string;
-  };
+  email: string;
+  role?: string;
 }
 
 export default function Dashboard() {
@@ -44,7 +41,12 @@ export default function Dashboard() {
 
   const checkAuth = async () => {
     try {
-      const userData = await client.auth.me();
+      const userData = await authApi.getCurrentUser();
+      if (!userData) {
+        navigate('/login');
+        return;
+      }
+
       setUser(userData as UserData);
       
       await rbac.initialize();
@@ -60,7 +62,7 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     try {
-      await client.auth.logout();
+      await authApi.logout();
       navigate('/login');
     } catch (error) {
       toast({
@@ -155,7 +157,7 @@ export default function Dashboard() {
               <LanguageSelector />
               <ThemeToggle />
               <div className="text-right">
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{user?.data?.email}</p>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{user?.email}</p>
                 <div className="flex gap-1 justify-end mt-1">
                   {roles.map((role, idx) => (
                     <Badge key={idx} variant="secondary" className="text-xs">
