@@ -45,13 +45,15 @@ const App = () => {
             <Route path="/" element={<Index />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
+            
+            {/* Εδώ είναι η κρίσιμη αλλαγή: Προσθήκη /* για να δουλεύουν τα εσωτερικά μενού */}
             <Route path="/admin/*" element={<Dashboard />} />
-            <Route path="/agent" element={<CallAgentDashboard />} />
-            <Route path="/client" element={<ClientPortal />} />
+            <Route path="/dashboard/*" element={<DashboardRedirect />} />
+            
+            <Route path="/agent/*" element={<CallAgentDashboard />} />
+            <Route path="/client/*" element={<ClientPortal />} />
             <Route path="/client/upload" element={<FileUpload />} />
-            <Route path="/dashboard/*" element={<Dashboard />} />
             <Route path="/chat" element={<Chat />} />
-            <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
