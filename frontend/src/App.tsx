@@ -3,8 +3,6 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { getAPIBaseURL } from '@/lib/config';
-import { LanguageProvider } from '@/contexts/LanguageContext';
-import { ThemeProvider } from 'next-themes'; 
 import Index from './pages/Index';
 import NotFound from './pages/NotFound';
 import Dashboard from './pages/Dashboard';
@@ -40,29 +38,24 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {/* Χρησιμοποιούμε το ThemeProvider με τις σωστές παραμέτρους για Vite */}
-      <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
-        <LanguageProvider>
-          <TooltipProvider>
-            <Toaster />
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<Index />} />
-                <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
-                <Route path="/admin" element={<Dashboard />} />
-                <Route path="/agent" element={<CallAgentDashboard />} />
-                <Route path="/client" element={<ClientPortal />} />
-                <Route path="/client/upload" element={<FileUpload />} />
-                <Route path="/dashboard" element={<DashboardRedirect />} />
-                <Route path="/chat" element={<Chat />} />
-                <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-          </TooltipProvider>
-        </LanguageProvider>
-      </ThemeProvider>
+      <TooltipProvider>
+        <Toaster />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/admin" element={<Dashboard />} />
+            <Route path="/agent" element={<CallAgentDashboard />} />
+            <Route path="/client" element={<ClientPortal />} />
+            <Route path="/client/upload" element={<FileUpload />} />
+            <Route path="/dashboard" element={<DashboardRedirect />} />
+            <Route path="/chat" element={<Chat />} />
+            <Route path="/dashboard/call-agent" element={<CallAgentDashboard />} />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </TooltipProvider>
     </QueryClientProvider>
   );
 };
