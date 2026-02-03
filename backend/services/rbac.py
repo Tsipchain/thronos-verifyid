@@ -128,7 +128,7 @@ class RBACService:
                         RolePermissions.permission_id == permission.id,
                     )
                 )
-                if existing_role_perm.scalar_one_or_none():
+                if existing_role_perm.scalars().first():
                     continue
                 role_perm = RolePermissions(role_id=role.id, permission_id=permission.id)
                 db.add(role_perm)
