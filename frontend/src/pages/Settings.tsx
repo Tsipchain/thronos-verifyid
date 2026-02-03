@@ -1,29 +1,52 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiClient } from '@/lib/api';
 import { rbac } from '@/lib/rbac';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ArrowLeft, Settings } from 'lucide-react';
 
+interface EnvVariable {
+  key: string;
+  value: string;
+  description: string;
+}
+
+interface EnvConfigResponse {
+  backend_vars: Record<string, EnvVariable>;
+  frontend_vars: Record<string, EnvVariable>;
+}
+
 export default function SettingsPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [settings, setSettings] = useState<EnvConfigResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkPermissions = async () => {
-      await rbac.initialize();
-      if (!rbac.canAccessSettings()) {
-        toast({
-          title: 'Access Denied',
-          description: 'You do not have permission to access settings',
-          variant: 'destructive'
-        });
-        navigate('/admin');
-        return;
+      try {
+        await rbac.initialize();
+        if (!rbac.canAccessSettings()) {
+          toast({
+            title: 'Access Denied',
+            description: 'You do not have permission to access settings',
+            variant: 'destructive'
+          });
+          navigate('/admin');
+          return;
+        }
+
+        const response = await apiClient.get<EnvConfigResponse>('/api/v1/admin/settings');
+        setSettings(response.data);
+      } catch (err) {
+        console.error('Failed to load settings', err);
+        setError('Failed to load settings.');
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     checkPermissions();
@@ -61,9 +84,40 @@ export default function SettingsPage() {
             <CardTitle>System Settings</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-sm text-gray-600">
-              Settings configuration will appear here once the backend endpoints are connected.
-            </p>
+            {error && <p className="text-sm text-red-600">{error}</p>}
+            {!error && !settings && <p className="text-sm text-gray-600">No settings found.</p>}
+            {settings && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-700">Backend</h2>
+                  <div className="mt-2 space-y-2">
+                    {Object.values(settings.backend_vars).map((item) => (
+                      <div key={item.key} className="rounded-lg border border-gray-200 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-900">{item.key}</span>
+                          <span className="text-xs text-gray-500">{item.description}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-600 break-all">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-gray-700">Frontend</h2>
+                  <div className="mt-2 space-y-2">
+                    {Object.values(settings.frontend_vars).map((item) => (
+                      <div key={item.key} className="rounded-lg border border-gray-200 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-gray-900">{item.key}</span>
+                          <span className="text-xs text-gray-500">{item.description}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-gray-600 break-all">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </main>
