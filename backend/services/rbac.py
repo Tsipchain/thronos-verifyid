@@ -195,7 +195,7 @@ class RBACService:
                 )
             )
         )
-        return result.scalar_one_or_none() is not None
+        return result.scalars().first() is not None
     
     @staticmethod
     async def get_all_roles(db: AsyncSession) -> List[Roles]:
