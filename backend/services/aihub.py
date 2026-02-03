@@ -39,6 +39,14 @@ class AIHubService:
             content = [item.model_dump() if hasattr(item, "model_dump") else item for item in content]
         return {"role": msg.role, "content": content}
 
+    @staticmethod
+    def _is_gemini_model(model: str) -> bool:
+        """Return True if model name suggests a Gemini provider."""
+        normalized = (model or "").strip().lower()
+        if not normalized:
+            return False
+        return "gemini" in normalized
+
     async def gentxt(self, request: GenTxtRequest) -> GenTxtResponse:
         """
         Generate Text API (non-streaming), supports text and image input.
@@ -225,6 +233,7 @@ class AIHubService:
         """
         try:
             # If an input image is provided, use the image editing endpoint (img2img).
+            is_gemini = self._is_gemini_model(request.model)
             if request.image:
                 image_files = await self._image_input_to_upload_files(request.image)
                 image_param = image_files[0] if len(image_files) == 1 else image_files
@@ -236,13 +245,15 @@ class AIHubService:
                     n=request.n,
                 )
             else:
-                response = await self.client.images.generate(
-                    model=request.model,
-                    prompt=request.prompt,
-                    size=request.size,
-                    quality=request.quality,
-                    n=request.n,
-                )
+                payload = {
+                    "model": request.model,
+                    "prompt": request.prompt,
+                    "size": request.size,
+                    "n": request.n,
+                }
+                if not is_gemini:
+                    payload["quality"] = request.quality
+                response = await self.client.images.generate(**payload)
 
             revised_prompt = response.data[0].revised_prompt if response.data else None
 
