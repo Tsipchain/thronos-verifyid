@@ -1,5 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
-import { createClient } from '@metagptx/web-sdk';
+import { apiClient } from '@/lib/api';
+import { getAPIBaseURL } from '@/lib/config';
+import { getAuthToken } from '@/lib/auth';
 import { rbac } from '@/lib/rbac';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,8 +18,6 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-
-const client = createClient();
 
 interface Conversation {
   id: number;
@@ -79,7 +79,7 @@ export default function Chat() {
         description: 'You do not have permission to access chat',
         variant: 'destructive'
       });
-      navigate('/dashboard');
+      navigate('/admin');
     }
   };
 
@@ -89,10 +89,7 @@ export default function Chat() {
 
   const loadConversations = async () => {
     try {
-      const response = await client.apiCall.invoke({
-        url: '/api/v1/chat/conversations',
-        method: 'GET'
-      });
+      const response = await apiClient.get<Conversation[]>('/api/v1/chat/conversations');
       setConversations(response.data);
       if (response.data.length > 0 && !selectedConversation) {
         setSelectedConversation(response.data[0]);
@@ -111,10 +108,9 @@ export default function Chat() {
 
   const loadMessages = async (conversationId: number) => {
     try {
-      const response = await client.apiCall.invoke({
-        url: `/api/v1/chat/conversations/${conversationId}/messages`,
-        method: 'GET'
-      });
+      const response = await apiClient.get<Message[]>(
+        `/api/v1/chat/conversations/${conversationId}/messages`
+      );
       setMessages(response.data);
     } catch (error) {
       toast({
@@ -126,10 +122,14 @@ export default function Chat() {
   };
 
   const connectWebSocket = (conversationId: number) => {
-    const token = localStorage.getItem('auth_token') || 'demo-token';
-    const ws = new WebSocket(
-      `ws://localhost:8000/api/v1/chat/ws/${conversationId}?token=${token}`
-    );
+    const token = getAuthToken() || 'demo-token';
+    const apiBaseUrl = getAPIBaseURL();
+    const wsBaseUrl = apiBaseUrl.startsWith('https')
+      ? apiBaseUrl.replace('https', 'wss')
+      : apiBaseUrl.replace('http', 'ws');
+    const wsUrl = new URL(`/api/v1/chat/ws/${conversationId}`, wsBaseUrl);
+    wsUrl.searchParams.set('token', token);
+    const ws = new WebSocket(wsUrl.toString());
 
     ws.onopen = () => {
       console.log('WebSocket connected');
@@ -154,13 +154,9 @@ export default function Chat() {
 
     setSending(true);
     try {
-      await client.apiCall.invoke({
-        url: '/api/v1/chat/messages',
-        method: 'POST',
-        data: {
-          conversation_id: selectedConversation.id,
-          content: newMessage
-        }
+      await apiClient.post('/api/v1/chat/messages', {
+        conversation_id: selectedConversation.id,
+        content: newMessage
       });
       setNewMessage('');
     } catch (error) {
@@ -198,7 +194,7 @@ export default function Chat() {
       <header className="bg-white border-b px-6 py-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/admin')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
