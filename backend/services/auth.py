@@ -23,6 +23,12 @@ class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
 
+    @staticmethod
+    def generate_password_hash(password: str) -> tuple[str, str]:
+        salt = secrets.token_hex(16)
+        password_hash = hash_password(password, salt)
+        return salt, password_hash
+
     async def store_oidc_state(self, state: str, nonce: str, code_verifier: str) -> None:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
         self.db.add(
