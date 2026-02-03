@@ -42,7 +42,10 @@ class AIHubService:
     @staticmethod
     def _is_gemini_model(model: str) -> bool:
         """Return True if model name suggests a Gemini provider."""
-        return (model or "").lower().startswith("gemini")
+        normalized = (model or "").strip().lower()
+        if not normalized:
+            return False
+        return "gemini" in normalized
 
     async def gentxt(self, request: GenTxtRequest) -> GenTxtResponse:
         """
