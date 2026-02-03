@@ -3,13 +3,15 @@ import logging
 import os
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from core.auth import create_access_token
+from core.config import settings
 from core.database import get_db
-from models.auth import User
+from models.auth import OIDCState, User
 from models.rbac import Roles, UserRoles
-from sqlalchemy import select, or_
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,88 @@ def hash_password(password: str, salt: str) -> str:
 class AuthService:
     def __init__(self, db: AsyncSession):
         self.db = db
+
+    async def store_oidc_state(self, state: str, nonce: str, code_verifier: str) -> None:
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=10)
+        self.db.add(
+            OIDCState(
+                state=state,
+                nonce=nonce,
+                code_verifier=code_verifier,
+                expires_at=expires_at,
+            )
+        )
+        await self.db.commit()
+
+    async def get_and_delete_oidc_state(self, state: str) -> Optional[dict]:
+        result = await self.db.execute(select(OIDCState).where(OIDCState.state == state))
+        record = result.scalar_one_or_none()
+        if not record:
+            return None
+
+        if record.expires_at < datetime.now(timezone.utc):
+            await self.db.execute(delete(OIDCState).where(OIDCState.id == record.id))
+            await self.db.commit()
+            return None
+
+        payload = {"nonce": record.nonce, "code_verifier": record.code_verifier}
+        await self.db.execute(delete(OIDCState).where(OIDCState.id == record.id))
+        await self.db.commit()
+        return payload
+
+    async def register_local_user(self, email: str, password: str, name: Optional[str] = None) -> User:
+        result = await self.db.execute(select(User).where(User.email == email))
+        existing = result.scalar_one_or_none()
+        if existing:
+            raise ValueError("Email already registered")
+
+        salt = secrets.token_hex(16)
+        user = User(
+            id=email,
+            email=email,
+            name=name,
+            role="client",
+            password_hash=hash_password(password, salt),
+            password_salt=salt,
+            is_active=True,
+            productivity_points=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.db.add(user)
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def authenticate_local_user(self, email: str, password: str) -> Optional[User]:
+        result = await self.db.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+        if not user or not user.password_salt or not user.password_hash:
+            return None
+
+        if user.password_hash != hash_password(password, user.password_salt):
+            return None
+
+        user.last_login = datetime.now(timezone.utc)
+        if not user.is_active:
+            user.is_active = True
+        await self.db.commit()
+        await self.db.refresh(user)
+        return user
+
+    async def issue_app_token(self, user: User) -> tuple[str, datetime, dict]:
+        now = datetime.now(timezone.utc)
+        expires_minutes = int(settings.jwt_expire_minutes)
+        expires_at = now + timedelta(minutes=expires_minutes)
+
+        claims = {
+            "sub": user.id,
+            "email": user.email,
+            "name": user.name,
+            "role": user.role,
+            "last_login": now.isoformat(),
+        }
+        token = create_access_token(claims, expires_minutes=expires_minutes)
+        return token, expires_at, claims
 
     async def get_or_create_user(self, platform_sub: str, email: str, name: Optional[str] = None) -> User:
         stmt = select(User).where(or_(User.id == str(platform_sub), User.email == email))
