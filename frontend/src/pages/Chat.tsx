@@ -8,6 +8,8 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   MessageSquare, 
   Send, 
@@ -38,6 +40,13 @@ interface Message {
   is_edited: boolean;
 }
 
+interface ChatUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  role: string;
+}
+
 export default function Chat() {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -47,6 +56,11 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -103,6 +117,15 @@ export default function Chat() {
         variant: 'destructive'
       });
       setLoading(false);
+    }
+  };
+
+  const loadChatUsers = async () => {
+    try {
+      const response = await apiClient.get<ChatUser[]>('/api/v1/chat/users');
+      setChatUsers(response.data);
+    } catch (error) {
+      console.error('Failed to load chat users', error);
     }
   };
 
@@ -170,6 +193,61 @@ export default function Chat() {
     }
   };
 
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      toast({
+        title: 'Missing name',
+        description: 'Please provide a group name.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (selectedUserIds.size === 0) {
+      toast({
+        title: 'No participants',
+        description: 'Select at least one participant.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setCreatingGroup(true);
+      const response = await apiClient.post<Conversation>('/api/v1/chat/conversations', {
+        conversation_type: 'group',
+        name: groupName.trim(),
+        description: '',
+        participant_ids: Array.from(selectedUserIds)
+      });
+      setConversations((prev) => [response.data, ...prev]);
+      setSelectedConversation(response.data);
+      setGroupName('');
+      setSelectedUserIds(new Set());
+      setIsGroupModalOpen(false);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to create conversation',
+        variant: 'destructive'
+      });
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -202,13 +280,60 @@ export default function Chat() {
             <h1 className="text-xl font-bold">Team Chat</h1>
           </div>
           {rbac.canManageChat() && (
-            <Button size="sm">
+            <Button
+              size="sm"
+              onClick={() => {
+                setIsGroupModalOpen(true);
+                loadChatUsers();
+              }}
+            >
               <Plus className="h-4 w-4 mr-2" />
               New Conversation
             </Button>
           )}
         </div>
       </header>
+
+      <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Group Conversation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Group name</label>
+              <Input
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                placeholder="KYC Team"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">Participants</p>
+              <ScrollArea className="h-48 border rounded-md p-2">
+                <div className="space-y-2">
+                  {chatUsers.map((user) => (
+                    <label key={user.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={selectedUserIds.has(user.id)}
+                        onCheckedChange={() => toggleUserSelection(user.id)}
+                      />
+                      <span className="flex-1">{user.email}</span>
+                      <span className="text-xs text-gray-500">{user.role}</span>
+                    </label>
+                  ))}
+                  {chatUsers.length === 0 && (
+                    <p className="text-xs text-gray-500">No users available.</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+            <Button onClick={handleCreateGroup} disabled={creatingGroup}>
+              {creatingGroup ? 'Creating...' : 'Create Group'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex-1 flex overflow-hidden">
         {/* Conversations List */}
