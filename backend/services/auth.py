@@ -147,9 +147,10 @@ async def initialize_admin_user():
     async for db in get_db():
         try:
             # --- 1. Admin User ---
-            admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com").strip()
+            admin_email = os.getenv("ADMIN_EMAIL", "admin@thonos.com").strip()
             admin_pass = os.getenv("ADMIN_PASSWORD", "admin123")
             admin_id = os.getenv("ADMIN_USER_ID", "1").strip()
+            admin_reset_password = os.getenv("ADMIN_RESET_PASSWORD", "").lower() in ("1", "true", "yes")
 
             admin = None
             if admin_id:
@@ -208,6 +209,12 @@ async def initialize_admin_user():
                     admin.role = "admin"
                 if not admin.is_active:
                     admin.is_active = True
+                if admin_email and admin.email != admin_email:
+                    admin.email = admin_email
+                if admin_pass and (admin_reset_password or not admin.password_hash or not admin.password_salt):
+                    salt = secrets.token_hex(16)
+                    admin.password_salt = salt
+                    admin.password_hash = hash_password(admin_pass, salt)
 
             await db.commit()
             await db.refresh(admin)
