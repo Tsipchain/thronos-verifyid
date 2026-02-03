@@ -1,13 +1,14 @@
 import hashlib
 import logging
+import os
 import secrets
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from core.database import db_manager
+from core.database import get_db
 from models.auth import User
-from models.rbac import Roles, UserRoles 
+from models.rbac import Roles, UserRoles
 from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,36 +60,18 @@ async def initialize_admin_user():
     logger.info("🎬 Initializing Admin & Roles...")
     
     # Χρησιμοποιούμε async for γιατί το get_db είναι generator
-    async for db in db_manager.get_db():
+    async for db in get_db():
         try:
             # --- 1. Admin User ---
-            admin_email = "admin@example.com"
-            admin_pass = "admin123" 
-            admin_id = "admin_root"
-            
-            stmt = select(User).where(User.email == admin_email)
-            result = await db.execute(stmt)
-            admin = result.scalar_one_or_none()
+            admin_email = os.getenv("ADMIN_EMAIL", "admin@example.com").strip()
+            admin_pass = os.getenv("ADMIN_PASSWORD", "admin123")
+            admin_id = os.getenv("ADMIN_USER_ID", "1").strip()
 
-            if not admin:
-                logger.info("Creating Admin User...")
-                salt = secrets.token_hex(16)
-                admin = User(
-                    id=admin_id,
-                    email=admin_email,
-                    name="System Admin",
-                    role="admin",
-                    password_hash=hash_password(admin_pass, salt),
-                    password_salt=salt,
-                    is_active=True,
-                    productivity_points=0,
-                    created_at=datetime.now(timezone.utc)
-                )
-                db.add(admin)
-                await db.commit()
-                await db.refresh(admin)
-            else:
-                logger.info("Admin User already exists.")
+            admin = None
+            if admin_id:
+                stmt = select(User).where(User.id == admin_id)
+                result = await db.execute(stmt)
+                admin = result.scalar_one_or_none()
 
             # --- 2. Admin Role ---
             role_stmt = select(Roles).where(Roles.name == "admin")
@@ -97,10 +80,53 @@ async def initialize_admin_user():
             
             if not admin_role:
                 logger.info("Creating 'admin' Role...")
-                admin_role = Roles(name="admin", description="Super User Access")
+                admin_role = Roles(
+                    name="admin",
+                    display_name="Administrator",
+                    description="Super User Access",
+                )
                 db.add(admin_role)
                 await db.commit()
                 await db.refresh(admin_role)
+
+            if not admin:
+                role_user_stmt = (
+                    select(User)
+                    .join(UserRoles, User.id == UserRoles.user_id)
+                    .where(UserRoles.role_id == admin_role.id)
+                )
+                role_user_res = await db.execute(role_user_stmt)
+                admin = role_user_res.scalars().first()
+
+            if not admin and admin_email:
+                stmt = select(User).where(User.email == admin_email)
+                result = await db.execute(stmt)
+                admin = result.scalar_one_or_none()
+
+            if not admin:
+                logger.info("Creating Admin User...")
+                salt = secrets.token_hex(16)
+                admin = User(
+                    id=admin_id or admin_email,
+                    email=admin_email,
+                    name="System Admin",
+                    role="admin",
+                    password_hash=hash_password(admin_pass, salt),
+                    password_salt=salt,
+                    is_active=True,
+                    productivity_points=0,
+                    created_at=datetime.now(timezone.utc),
+                )
+                db.add(admin)
+            else:
+                logger.info("Admin User already exists.")
+                if admin.role != "admin":
+                    admin.role = "admin"
+                if not admin.is_active:
+                    admin.is_active = True
+
+            await db.commit()
+            await db.refresh(admin)
 
             # --- 3. Link User-Role ---
             ur_stmt = select(UserRoles).where(
