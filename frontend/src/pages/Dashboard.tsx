@@ -89,7 +89,7 @@ export default function Dashboard() {
       title: t('verifications'),
       description: 'Manage identity verifications',
       icon: FileCheck,
-      path: '/verifications',
+      path: '/admin/verifications',
       show: rbac.canAccessVerifications(),
       color: 'text-blue-600 dark:text-blue-400',
       bgColor: 'bg-blue-50 dark:bg-blue-900/20'
@@ -98,7 +98,7 @@ export default function Dashboard() {
       title: t('chat'),
       description: 'Team communication',
       icon: MessageSquare,
-      path: '/chat',
+      path: '/admin/chat',
       show: rbac.canAccessChat(),
       color: 'text-green-600 dark:text-green-400',
       bgColor: 'bg-green-50 dark:bg-green-900/20'
@@ -107,7 +107,7 @@ export default function Dashboard() {
       title: t('users'),
       description: 'User management',
       icon: Users,
-      path: '/users',
+      path: '/admin/users',
       show: rbac.canAccessUsers(),
       color: 'text-purple-600 dark:text-purple-400',
       bgColor: 'bg-purple-50 dark:bg-purple-900/20'
@@ -116,7 +116,7 @@ export default function Dashboard() {
       title: t('reports'),
       description: 'Analytics and reports',
       icon: BarChart3,
-      path: '/reports',
+      path: '/admin/reports',
       show: rbac.canAccessReports(),
       color: 'text-orange-600 dark:text-orange-400',
       bgColor: 'bg-orange-50 dark:bg-orange-900/20'
@@ -125,7 +125,7 @@ export default function Dashboard() {
       title: t('settings'),
       description: 'System settings',
       icon: Settings,
-      path: '/settings',
+      path: '/admin/settings',
       show: rbac.canAccessSettings(),
       color: 'text-gray-600 dark:text-gray-400',
       bgColor: 'bg-gray-50 dark:bg-gray-900/20'
