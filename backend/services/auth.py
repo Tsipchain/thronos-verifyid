@@ -115,24 +115,26 @@ class AuthService:
         stmt = select(User).where(or_(User.id == str(platform_sub), User.email == email))
         result = await self.db.execute(stmt)
         user = result.scalar_one_or_none()
-        
+
         if user:
             user.email = email
-            if name: user.name = name
+            if name:
+                user.name = name
             user.last_login = datetime.now(timezone.utc)
-            if not user.is_active: user.is_active = True
+            if not user.is_active:
+                user.is_active = True
         else:
             user = User(
-                id=str(platform_sub), 
+                id=str(platform_sub),
                 email=email,
                 name=name,
-                role="user",
+                role="client",
                 is_active=True,
                 productivity_points=0,
-                created_at=datetime.now(timezone.utc)
+                created_at=datetime.now(timezone.utc),
             )
             self.db.add(user)
-        
+
         try:
             await self.db.commit()
             await self.db.refresh(user)
@@ -153,7 +155,7 @@ async def initialize_admin_user():
     async for db in get_db():
         try:
             # --- 1. Admin User ---
-            admin_email = os.getenv("ADMIN_EMAIL", "admin@thonos.com").strip()
+            admin_email = os.getenv("ADMIN_EMAIL", "admin@thronos.com").strip()
             admin_pass = os.getenv("ADMIN_PASSWORD", "admin123")
             admin_id = os.getenv("ADMIN_USER_ID", "1").strip()
             admin_reset_password = os.getenv("ADMIN_RESET_PASSWORD", "").lower() in ("1", "true", "yes")
