@@ -78,6 +78,19 @@ export default function CallAgentDashboard() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+      navigate('/login');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to logout',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const connectWebSocket = (userId: string) => {
     const apiBaseUrl = getAPIBaseURL();
     const wsBaseUrl = apiBaseUrl.startsWith('https')
@@ -245,6 +258,9 @@ export default function CallAgentDashboard() {
           >
             <Bot className="h-4 w-4" />
             AI Assistant
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            Logout
           </Button>
         </div>
       </div>
