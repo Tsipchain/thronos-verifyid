@@ -263,6 +263,15 @@ export default function CallAgentDashboard() {
             Logout
           </Button>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAiModalOpen(true)}
+          className="gap-2"
+        >
+          <Bot className="h-4 w-4" />
+          AI Assistant
+        </Button>
       </div>
 
       <Tabs defaultValue="pending" className="w-full">
