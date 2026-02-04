@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { createClient } from '@metagptx/web-sdk';
+import { apiClient } from '@/lib/api';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -7,8 +7,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Bot, Send, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
-
-const client = createClient();
 
 interface Message {
   role: 'user' | 'assistant';
@@ -57,18 +55,14 @@ Help them with questions about:
 - General platform usage
 Be concise, friendly, and professional.`;
 
-      const response = await client.apiCall.invoke({
-        url: '/api/v1/aihub/gentxt',
-        method: 'POST',
-        data: {
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages.map(m => ({ role: m.role, content: m.content })),
-            { role: 'user', content: userMessage }
-          ],
-          model: 'gpt-5-chat',
-          stream: false
-        }
+      const response = await apiClient.post('/api/v1/aihub/thronos-chat', {
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...messages.map(m => ({ role: m.role, content: m.content })),
+          { role: 'user', content: userMessage }
+        ],
+        model: 'claude-3.5-sonnet-latest',
+        temperature: 0.3
       });
 
       const assistantMessage = response.data.content;
@@ -89,7 +83,7 @@ Be concise, friendly, and professional.`;
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -160,7 +154,7 @@ Be concise, friendly, and professional.`;
             placeholder={t('askQuestion')}
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            onKeyPress={handleKeyPress}
+            onKeyDown={handleKeyDown}
             disabled={loading}
             className="resize-none"
             rows={2}

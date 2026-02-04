@@ -9,12 +9,6 @@ class RBACService:
     @staticmethod
     async def initialize_default_roles(db: AsyncSession):
         """Initialize default roles and permissions"""
-        
-        # Check if roles already exist
-        result = await db.execute(select(Roles))
-        if result.scalars().first():
-            return
-        
         # Define roles
         roles_data = [
             {
@@ -38,10 +32,15 @@ class RBACService:
                 "description": "System administrator with all permissions"
             }
         ]
-        
-        # Create roles
+
         role_objects = {}
+        existing_roles_result = await db.execute(select(Roles))
+        for role in existing_roles_result.scalars().all():
+            role_objects[role.name] = role
+
         for role_data in roles_data:
+            if role_data["name"] in role_objects:
+                continue
             role = Roles(**role_data)
             db.add(role)
             await db.flush()
@@ -72,10 +71,15 @@ class RBACService:
             {"name": "reports.read", "resource": "reports", "action": "read", "description": "View reports"},
             {"name": "reports.create", "resource": "reports", "action": "create", "description": "Create reports"},
         ]
-        
-        # Create permissions
+
         permission_objects = {}
+        existing_permissions_result = await db.execute(select(Permissions))
+        for permission in existing_permissions_result.scalars().all():
+            permission_objects[permission.name] = permission
+
         for perm_data in permissions_data:
+            if perm_data["name"] in permission_objects:
+                continue
             permission = Permissions(**perm_data)
             db.add(permission)
             await db.flush()
@@ -105,6 +109,7 @@ class RBACService:
             "management": [
                 "verifications.read",
                 "chat.read",
+                "chat.manage",
                 "users.read",
                 "reports.read",
                 "reports.create",
@@ -117,10 +122,15 @@ class RBACService:
             role = role_objects[role_name]
             for perm_name in permission_names:
                 permission = permission_objects[perm_name]
-                role_perm = RolePermissions(
-                    role_id=role.id,
-                    permission_id=permission.id
+                existing_role_perm = await db.execute(
+                    select(RolePermissions).where(
+                        RolePermissions.role_id == role.id,
+                        RolePermissions.permission_id == permission.id,
+                    )
                 )
+                if existing_role_perm.scalars().first():
+                    continue
+                role_perm = RolePermissions(role_id=role.id, permission_id=permission.id)
                 db.add(role_perm)
         
         await db.commit()
@@ -185,7 +195,7 @@ class RBACService:
                 )
             )
         )
-        return result.scalar_one_or_none() is not None
+        return result.scalars().first() is not None
     
     @staticmethod
     async def get_all_roles(db: AsyncSession) -> List[Roles]:
