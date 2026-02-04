@@ -6,9 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Video, Clock, AlertTriangle, Phone, User, CheckCircle } from 'lucide-react';
+import { Video, Clock, AlertTriangle, Phone, User, CheckCircle, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
+import AIAssistantModal from '@/components/AIAssistantModal';
 
 interface VideoCallRequest {
   id: number;
@@ -38,6 +39,7 @@ export default function CallAgentDashboard() {
   const [agentStatus, setAgentStatus] = useState<string>('offline');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -215,19 +217,30 @@ export default function CallAgentDashboard() {
     <div className="container mx-auto p-6">
       <Toaster />
       
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Call Agent Dashboard</h1>
-        <div className="flex gap-4 items-center">
-          <Badge className={agentStatus === 'online' ? 'bg-green-500' : 'bg-gray-500'}>
-            {agentStatus === 'online' ? '● Online' : '○ Offline'}
-          </Badge>
-          <span className="text-sm text-gray-500">
-            Active Calls: {activeCalls}/3
-          </span>
-          <span className="text-sm text-gray-500">
-            Queue: {pendingCalls.length}
-          </span>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Call Agent Dashboard</h1>
+          <div className="flex flex-wrap gap-4 items-center">
+            <Badge className={agentStatus === 'online' ? 'bg-green-500' : 'bg-gray-500'}>
+              {agentStatus === 'online' ? '● Online' : '○ Offline'}
+            </Badge>
+            <span className="text-sm text-gray-500">
+              Active Calls: {activeCalls}/3
+            </span>
+            <span className="text-sm text-gray-500">
+              Queue: {pendingCalls.length}
+            </span>
+          </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAiModalOpen(true)}
+          className="gap-2"
+        >
+          <Bot className="h-4 w-4" />
+          AI Assistant
+        </Button>
       </div>
 
       <Tabs defaultValue="pending" className="w-full">
@@ -322,6 +335,7 @@ export default function CallAgentDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+      <AIAssistantModal open={aiModalOpen} onOpenChange={setAiModalOpen} />
     </div>
   );
 }

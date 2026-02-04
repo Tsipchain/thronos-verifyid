@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
+from models.auth import User
 from models.rbac import Roles, Permissions, RolePermissions, UserRoles
 from typing import List, Optional
 
@@ -17,6 +18,11 @@ class RBACService:
                 "description": "Call center staff for identity verification"
             },
             {
+                "name": "agent",
+                "display_name": "Agent",
+                "description": "Call center staff for identity verification"
+            },
+            {
                 "name": "it_staff",
                 "display_name": "IT Staff",
                 "description": "Technical staff with full system access"
@@ -24,6 +30,11 @@ class RBACService:
             {
                 "name": "management",
                 "display_name": "Management",
+                "description": "Management with oversight and reporting access"
+            },
+            {
+                "name": "manager",
+                "display_name": "Manager",
                 "description": "Management with oversight and reporting access"
             },
             {
@@ -94,6 +105,13 @@ class RBACService:
                 "chat.read",
                 "chat.send"
             ],
+            "agent": [
+                "verifications.read",
+                "verifications.create",
+                "verifications.update",
+                "chat.read",
+                "chat.send"
+            ],
             "it_staff": [
                 "verifications.read",
                 "verifications.create",
@@ -107,6 +125,15 @@ class RBACService:
                 "settings.manage"
             ],
             "management": [
+                "verifications.read",
+                "chat.read",
+                "chat.manage",
+                "users.read",
+                "reports.read",
+                "reports.create",
+                "settings.read"
+            ],
+            "manager": [
                 "verifications.read",
                 "chat.read",
                 "chat.manage",
@@ -133,6 +160,30 @@ class RBACService:
                 role_perm = RolePermissions(role_id=role.id, permission_id=permission.id)
                 db.add(role_perm)
         
+        await db.commit()
+
+    @staticmethod
+    async def _ensure_user_role_link(db: AsyncSession, user_id: str) -> None:
+        result = await db.execute(select(User).where(User.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user or not user.role:
+            return
+
+        role_result = await db.execute(select(Roles).where(Roles.name == user.role))
+        role = role_result.scalar_one_or_none()
+        if not role:
+            return
+
+        existing_role = await db.execute(
+            select(UserRoles).where(
+                UserRoles.user_id == user_id,
+                UserRoles.role_id == role.id,
+            )
+        )
+        if existing_role.scalar_one_or_none():
+            return
+
+        db.add(UserRoles(user_id=user_id, role_id=role.id, assigned_by="system"))
         await db.commit()
     
     @staticmethod
@@ -161,11 +212,23 @@ class RBACService:
             .join(UserRoles, Roles.id == UserRoles.role_id)
             .where(UserRoles.user_id == user_id)
         )
+        roles = result.scalars().all()
+        if roles:
+            return roles
+
+        await RBACService._ensure_user_role_link(db, user_id)
+
+        result = await db.execute(
+            select(Roles)
+            .join(UserRoles, Roles.id == UserRoles.role_id)
+            .where(UserRoles.user_id == user_id)
+        )
         return result.scalars().all()
     
     @staticmethod
     async def get_user_permissions(db: AsyncSession, user_id: str) -> List[Permissions]:
         """Get all permissions for a user based on their roles"""
+        await RBACService.get_user_roles(db, user_id)
         result = await db.execute(
             select(Permissions)
             .join(RolePermissions, Permissions.id == RolePermissions.permission_id)
@@ -183,6 +246,7 @@ class RBACService:
         action: str
     ) -> bool:
         """Check if user has specific permission"""
+        await RBACService.get_user_roles(db, user_id)
         result = await db.execute(
             select(Permissions)
             .join(RolePermissions, Permissions.id == RolePermissions.permission_id)
