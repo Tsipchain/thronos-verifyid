@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '@/lib/api';
 import { authApi } from '@/lib/auth';
 import { getAPIBaseURL } from '@/lib/config';
@@ -10,6 +11,7 @@ import { Video, Clock, AlertTriangle, Phone, User, CheckCircle, Bot } from 'luci
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import AIAssistantModal from '@/components/AIAssistantModal';
+import LanguageSelector from '@/components/LanguageSelector';
 
 interface VideoCallRequest {
   id: number;
@@ -34,6 +36,7 @@ interface AgentStatus {
 }
 
 export default function CallAgentDashboard() {
+  const navigate = useNavigate();
   const [pendingCalls, setPendingCalls] = useState<VideoCallRequest[]>([]);
   const [activeCalls, setActiveCalls] = useState<number>(0);
   const [agentStatus, setAgentStatus] = useState<string>('offline');
@@ -70,6 +73,19 @@ export default function CallAgentDashboard() {
       toast({
         title: 'Authentication Error',
         description: 'Please log in to access this page',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+      navigate('/login');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to logout',
         variant: 'destructive'
       });
     }
@@ -214,7 +230,7 @@ export default function CallAgentDashboard() {
   };
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 pb-24">
       <Toaster />
       
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
@@ -231,6 +247,21 @@ export default function CallAgentDashboard() {
               Queue: {pendingCalls.length}
             </span>
           </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <LanguageSelector />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAiModalOpen(true)}
+            className="gap-2"
+          >
+            <Bot className="h-4 w-4" />
+            AI Assistant
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            Logout
+          </Button>
         </div>
         <Button
           variant="outline"
@@ -336,6 +367,21 @@ export default function CallAgentDashboard() {
         </TabsContent>
       </Tabs>
       <AIAssistantModal open={aiModalOpen} onOpenChange={setAiModalOpen} />
+      <footer className="fixed bottom-0 left-0 right-0 border-t bg-white/90 backdrop-blur dark:bg-gray-900/90">
+        <div className="container mx-auto flex items-center justify-between px-6 py-3">
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            Team communication
+          </span>
+          <Button
+            size="sm"
+            onClick={() => navigate('/admin/chat')}
+            className="gap-2"
+          >
+            <User className="h-4 w-4" />
+            Open Team Chat
+          </Button>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -10,10 +10,10 @@ import LanguageSelector from '@/components/LanguageSelector';
 import ThemeToggle from '@/components/ThemeToggle';
 import { 
   Shield, 
-  MessageSquare, 
-  Users, 
-  Settings, 
-  FileCheck, 
+  MessageSquare,
+  Users,
+  Settings,
+  FileCheck,
   BarChart3,
   LogOut,
   Bot
@@ -133,7 +133,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900">
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900 pb-20">
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
@@ -244,6 +244,19 @@ export default function Dashboard() {
       </main>
 
       <AIAssistantModal open={aiModalOpen} onOpenChange={setAiModalOpen} />
+      {rbac.canAccessChat() && (
+        <footer className="fixed bottom-0 left-0 right-0 border-t bg-white/90 backdrop-blur dark:bg-gray-900/90">
+          <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 py-3">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
+              Team communication
+            </span>
+            <Button size="sm" onClick={() => navigate('/admin/chat')} className="gap-2">
+              <MessageSquare className="h-4 w-4" />
+              Open Team Chat
+            </Button>
+          </div>
+        </footer>
+      )}
     </div>
   );
 }

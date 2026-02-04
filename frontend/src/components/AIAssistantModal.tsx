@@ -44,7 +44,7 @@ export default function AIAssistantModal({ open, onOpenChange }: AIAssistantModa
         esp: 'Spanish'
       };
 
-      const systemPrompt = `You are a helpful assistant for an identity verification platform. 
+      const systemPrompt = `You are a helpful assistant for an identity verification platform.
 The user is currently using the interface in ${languageNames[language]}.
 Respond in ${languageNames[language]} to match their language preference.
 Help them with questions about:
@@ -53,6 +53,10 @@ Help them with questions about:
 - Document requirements
 - Account issues
 - General platform usage
+Additionally, provide guidance for detecting forged or suspicious documents:
+- Highlight common red flags (inconsistent fonts, mismatched MRZ, altered photos, metadata issues)
+- Suggest safe verification steps without sharing harmful tactics
+- Encourage escalation to supervisors when in doubt
 Be concise, friendly, and professional.`;
 
       const response = await apiClient.post('/api/v1/aihub/thronos-chat', {
