@@ -6,10 +6,12 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from core.auth import create_access_token
+from core.config import settings
 from core.database import get_db
-from models.auth import User
-from models.rbac import Roles, UserRoles 
-from sqlalchemy import select, or_
+from models.auth import OIDCState, User
+from models.rbac import Roles, UserRoles
+from sqlalchemy import delete, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
