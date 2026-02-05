@@ -47,7 +47,11 @@ interface ChatUser {
   role: string;
 }
 
-export default function Chat() {
+interface ChatProps {
+  embedded?: boolean;
+}
+
+export default function Chat({ embedded = false }: ChatProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -267,32 +271,75 @@ export default function Chat() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
+    <div className={`flex flex-col bg-gray-50 ${embedded ? 'h-full' : 'h-screen'}`}>
       {/* Header */}
-      <header className="bg-white border-b px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/admin')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <MessageSquare className="h-6 w-6 text-blue-600" />
-            <h1 className="text-xl font-bold">Team Chat</h1>
+      {!embedded && (
+        <header className="bg-white border-b px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/admin')}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+              <MessageSquare className="h-6 w-6 text-blue-600" />
+              <h1 className="text-xl font-bold">Team Chat</h1>
+            </div>
+            {rbac.canManageChat() && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setIsGroupModalOpen(true);
+                  loadChatUsers();
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Conversation
+              </Button>
+            )}
           </div>
-          {rbac.canManageChat() && (
-            <Button
-              size="sm"
-              onClick={() => {
-                setIsGroupModalOpen(true);
-                loadChatUsers();
-              }}
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              New Conversation
+        </header>
+      )}
+
+      <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Group Conversation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Group name</label>
+              <Input
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                placeholder="KYC Team"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">Participants</p>
+              <ScrollArea className="h-48 border rounded-md p-2">
+                <div className="space-y-2">
+                  {chatUsers.map((user) => (
+                    <label key={user.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={selectedUserIds.has(user.id)}
+                        onCheckedChange={() => toggleUserSelection(user.id)}
+                      />
+                      <span className="flex-1">{user.email}</span>
+                      <span className="text-xs text-gray-500">{user.role}</span>
+                    </label>
+                  ))}
+                  {chatUsers.length === 0 && (
+                    <p className="text-xs text-gray-500">No users available.</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+            <Button onClick={handleCreateGroup} disabled={creatingGroup}>
+              {creatingGroup ? 'Creating...' : 'Create Group'}
             </Button>
-          )}
-        </div>
-      </header>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
         <DialogContent className="max-w-lg">
@@ -339,7 +386,21 @@ export default function Chat() {
         {/* Conversations List */}
         <div className="w-80 bg-white border-r flex flex-col">
           <div className="p-4 border-b">
-            <h2 className="font-semibold text-gray-900">Conversations</h2>
+            <div className="flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Conversations</h2>
+              {rbac.canManageChat() && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    setIsGroupModalOpen(true);
+                    loadChatUsers();
+                  }}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
           <ScrollArea className="flex-1">
             <div className="p-2">
@@ -434,23 +495,23 @@ export default function Chat() {
               </ScrollArea>
 
               {/* Message Input */}
-              {rbac.canSendMessages() && (
-                <div className="bg-white border-t p-4">
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Type a message..."
-                      value={newMessage}
-                      onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      disabled={sending}
-                      className="flex-1"
-                    />
-                    <Button onClick={sendMessage} disabled={sending || !newMessage.trim()}>
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              )}
+                  {rbac.canSendMessages() && (
+                    <div className="bg-white border-t p-4">
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Type a message..."
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyDown={handleKeyDown}
+                          disabled={sending}
+                          className="flex-1"
+                        />
+                        <Button onClick={sendMessage} disabled={sending || !newMessage.trim()}>
+                          <Send className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">

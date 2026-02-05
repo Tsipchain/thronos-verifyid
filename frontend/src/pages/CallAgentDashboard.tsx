@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import AIAssistantModal from '@/components/AIAssistantModal';
 import LanguageSelector from '@/components/LanguageSelector';
+import ChatWidget from '@/components/ChatWidget';
 
 interface VideoCallRequest {
   id: number;
@@ -43,6 +44,7 @@ export default function CallAgentDashboard() {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -367,6 +369,7 @@ export default function CallAgentDashboard() {
         </TabsContent>
       </Tabs>
       <AIAssistantModal open={aiModalOpen} onOpenChange={setAiModalOpen} />
+      <ChatWidget open={chatOpen} onOpenChange={setChatOpen} />
       <footer className="fixed bottom-0 left-0 right-0 border-t bg-white/90 backdrop-blur dark:bg-gray-900/90">
         <div className="container mx-auto flex items-center justify-between px-6 py-3">
           <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -374,7 +377,7 @@ export default function CallAgentDashboard() {
           </span>
           <Button
             size="sm"
-            onClick={() => navigate('/admin/chat')}
+            onClick={() => setChatOpen(true)}
             className="gap-2"
           >
             <User className="h-4 w-4" />
