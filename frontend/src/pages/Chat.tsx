@@ -10,13 +10,15 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  MessageSquare, 
-  Send, 
-  Users, 
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  MessageSquare,
+  Send,
+  Users,
   Plus,
   ArrowLeft,
-  Circle
+  Circle,
+  UserCircle2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
@@ -61,16 +63,19 @@ export default function Chat({ embedded = false }: ChatProps) {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
+  const [directContacts, setDirectContacts] = useState<ChatUser[]>([]);
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
   const [groupName, setGroupName] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [activeTab, setActiveTab] = useState<'conversations' | 'people'>('conversations');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     checkPermissions();
     loadConversations();
+    loadDirectContacts();
   }, []);
 
   useEffect(() => {
@@ -130,6 +135,15 @@ export default function Chat({ embedded = false }: ChatProps) {
       setChatUsers(response.data);
     } catch (error) {
       console.error('Failed to load chat users', error);
+    }
+  };
+
+  const loadDirectContacts = async () => {
+    try {
+      const response = await apiClient.get<ChatUser[]>('/api/v1/chat/contacts');
+      setDirectContacts(response.data);
+    } catch (error) {
+      console.error('Failed to load direct contacts', error);
     }
   };
 
@@ -194,6 +208,29 @@ export default function Chat({ embedded = false }: ChatProps) {
       });
     } finally {
       setSending(false);
+    }
+  };
+
+  const openDirectChat = async (recipientUserId: string) => {
+    try {
+      const response = await apiClient.post<Conversation>('/api/v1/chat/direct', {
+        recipient_user_id: recipientUserId,
+        content: 'Started a private chat'
+      });
+
+      const existing = conversations.find((conv) => conv.id === response.data.id);
+      if (!existing) {
+        setConversations((prev) => [response.data, ...prev]);
+      }
+      setSelectedConversation(response.data);
+      setActiveTab('conversations');
+      await loadConversations();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to open direct conversation',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -272,7 +309,6 @@ export default function Chat({ embedded = false }: ChatProps) {
 
   return (
     <div className={`flex flex-col bg-gray-50 ${embedded ? 'h-full' : 'h-screen'}`}>
-      {/* Header */}
       {!embedded && (
         <header className="bg-white border-b px-6 py-4">
           <div className="flex items-center justify-between">
@@ -341,112 +377,105 @@ export default function Chat({ embedded = false }: ChatProps) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Create Group Conversation</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Group name</label>
-              <Input
-                value={groupName}
-                onChange={(event) => setGroupName(event.target.value)}
-                placeholder="KYC Team"
-              />
-            </div>
-            <div>
-              <p className="text-sm font-medium mb-2">Participants</p>
-              <ScrollArea className="h-48 border rounded-md p-2">
-                <div className="space-y-2">
-                  {chatUsers.map((user) => (
-                    <label key={user.id} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={selectedUserIds.has(user.id)}
-                        onCheckedChange={() => toggleUserSelection(user.id)}
-                      />
-                      <span className="flex-1">{user.email}</span>
-                      <span className="text-xs text-gray-500">{user.role}</span>
-                    </label>
-                  ))}
-                  {chatUsers.length === 0 && (
-                    <p className="text-xs text-gray-500">No users available.</p>
+      <div className="flex-1 flex overflow-hidden">
+        <div className="w-80 bg-white border-r flex flex-col">
+          <div className="p-3 border-b">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'conversations' | 'people')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="conversations">Conversations</TabsTrigger>
+                <TabsTrigger value="people">Active Users</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+
+          {activeTab === 'conversations' ? (
+            <>
+              <div className="p-4 border-b">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900">Conversations</h2>
+                  {rbac.canManageChat() && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsGroupModalOpen(true);
+                        loadChatUsers();
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
                   )}
                 </div>
-              </ScrollArea>
-            </div>
-            <Button onClick={handleCreateGroup} disabled={creatingGroup}>
-              {creatingGroup ? 'Creating...' : 'Create Group'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <div className="flex-1 flex overflow-hidden">
-        {/* Conversations List */}
-        <div className="w-80 bg-white border-r flex flex-col">
-          <div className="p-4 border-b">
-            <div className="flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Conversations</h2>
-              {rbac.canManageChat() && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    setIsGroupModalOpen(true);
-                    loadChatUsers();
-                  }}
-                >
-                  <Plus className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="p-2">
-              {conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={`p-3 rounded-lg cursor-pointer mb-1 transition-colors ${
-                    selectedConversation?.id === conv.id
-                      ? 'bg-blue-50 border border-blue-200'
-                      : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => setSelectedConversation(conv)}
-                >
-                  <div className="flex items-start justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
-                          {conv.conversation_type === 'group' ? <Users className="h-4 w-4" /> : conv.name?.[0] || 'D'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">
-                          {conv.name || 'Direct Message'}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {conv.participant_count} members
-                        </p>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-2">
+                  {conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={`p-3 rounded-lg cursor-pointer mb-1 transition-colors ${
+                        selectedConversation?.id === conv.id
+                          ? 'bg-blue-50 border border-blue-200'
+                          : 'hover:bg-gray-50'
+                      }`}
+                      onClick={() => setSelectedConversation(conv)}
+                    >
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
+                              {conv.conversation_type === 'group' ? <Users className="h-4 w-4" /> : conv.name?.[0] || 'D'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">
+                              {conv.name || 'Direct Message'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {conv.participant_count} members
+                            </p>
+                          </div>
+                        </div>
+                        {conv.unread_count > 0 && (
+                          <Badge variant="default" className="ml-2">
+                            {conv.unread_count}
+                          </Badge>
+                        )}
                       </div>
                     </div>
-                    {conv.unread_count > 0 && (
-                      <Badge variant="default" className="ml-2">
-                        {conv.unread_count}
-                      </Badge>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
+              </ScrollArea>
+            </>
+          ) : (
+            <ScrollArea className="flex-1 p-2">
+              <div className="space-y-2">
+                {directContacts.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    className="w-full text-left p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+                    onClick={() => openDirectChat(user.id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <UserCircle2 className="h-5 w-5 text-gray-500" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{user.name || user.email}</p>
+                        <p className="text-xs text-gray-500 truncate">{user.role}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+                {directContacts.length === 0 && (
+                  <p className="text-xs text-gray-500 p-2">No active contacts found.</p>
+                )}
+              </div>
+            </ScrollArea>
+          )}
         </div>
 
-        {/* Messages Area */}
         <div className="flex-1 flex flex-col">
           {selectedConversation ? (
             <>
-              {/* Conversation Header */}
               <div className="bg-white border-b px-6 py-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -464,7 +493,6 @@ export default function Chat({ embedded = false }: ChatProps) {
                 </div>
               </div>
 
-              {/* Messages */}
               <ScrollArea className="flex-1 p-6">
                 <div className="space-y-4">
                   {messages.map((msg) => (
@@ -494,24 +522,23 @@ export default function Chat({ embedded = false }: ChatProps) {
                 </div>
               </ScrollArea>
 
-              {/* Message Input */}
-                  {rbac.canSendMessages() && (
-                    <div className="bg-white border-t p-4">
-                      <div className="flex gap-2">
-                        <Input
-                          placeholder="Type a message..."
-                          value={newMessage}
-                          onChange={(e) => setNewMessage(e.target.value)}
-                          onKeyDown={handleKeyDown}
-                          disabled={sending}
-                          className="flex-1"
-                        />
-                        <Button onClick={sendMessage} disabled={sending || !newMessage.trim()}>
-                          <Send className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
+              {rbac.canSendMessages() && (
+                <div className="bg-white border-t p-4">
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="Type a message..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      disabled={sending}
+                      className="flex-1"
+                    />
+                    <Button onClick={sendMessage} disabled={sending || !newMessage.trim()}>
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">
