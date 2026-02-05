@@ -1,8 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependencies.database import get_db
 from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
+from services.rbac import RBACService
+from models.auth import User
+from pydantic import BaseModel
 from schemas.chat import (
     ConversationCreate,
     ConversationResponse,
@@ -23,6 +27,13 @@ import logging
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
+
+
+class ChatUserResponse(BaseModel):
+    id: str
+    email: str
+    name: str | None = None
+    role: str
 
 
 class ConnectionManager:
@@ -116,6 +127,11 @@ async def create_conversation(
 ):
     """Create a new conversation (group or direct)"""
     try:
+        if data.conversation_type == "group":
+            can_manage_chat = await RBACService.check_permission(db, current_user.id, "chat", "manage")
+            if not can_manage_chat:
+                raise HTTPException(status_code=403, detail="Only admin/IT can create group conversations")
+
         conversation = await ChatService.create_conversation(
             db, current_user.id, current_user.email, data
         )
@@ -145,6 +161,7 @@ async def get_conversations(
 ):
     """Get all conversations for the current user"""
     try:
+        await ChatService.ensure_user_in_default_group(db, current_user.id, current_user.email)
         conversations_data = await ChatService.get_user_conversations(db, current_user.id)
         
         return [
@@ -166,6 +183,42 @@ async def get_conversations(
     except Exception as e:
         logger.error(f"Error getting conversations: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/contacts", response_model=List[ChatUserResponse])
+async def get_chat_contacts(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get users available for direct chat (agents/managers/admins)."""
+    has_chat_access = await RBACService.check_permission(db, current_user.id, "chat", "read")
+    if not has_chat_access:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to access chat contacts")
+
+    result = await db.execute(
+        select(User).where(User.is_active == True, User.role.in_(["admin", "manager", "agent", "it_staff"]))
+    )
+    users = result.scalars().all()
+    return [
+        ChatUserResponse(id=user.id, email=user.email, name=user.name, role=user.role)
+        for user in users
+        if user.id != current_user.id
+    ]
+
+
+@router.get("/users", response_model=List[ChatUserResponse])
+async def get_chat_users(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get users available for chat management (requires chat.manage permission)."""
+    has_permission = await RBACService.check_permission(db, current_user.id, "chat", "manage")
+    if not has_permission:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to manage chat users")
+
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return [ChatUserResponse(id=user.id, email=user.email, name=user.name, role=user.role) for user in users]
 
 
 @router.post("/messages", response_model=MessageResponse)
