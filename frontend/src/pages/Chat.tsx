@@ -341,6 +341,47 @@ export default function Chat({ embedded = false }: ChatProps) {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Group Conversation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Group name</label>
+              <Input
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                placeholder="KYC Team"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">Participants</p>
+              <ScrollArea className="h-48 border rounded-md p-2">
+                <div className="space-y-2">
+                  {chatUsers.map((user) => (
+                    <label key={user.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={selectedUserIds.has(user.id)}
+                        onCheckedChange={() => toggleUserSelection(user.id)}
+                      />
+                      <span className="flex-1">{user.email}</span>
+                      <span className="text-xs text-gray-500">{user.role}</span>
+                    </label>
+                  ))}
+                  {chatUsers.length === 0 && (
+                    <p className="text-xs text-gray-500">No users available.</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+            <Button onClick={handleCreateGroup} disabled={creatingGroup}>
+              {creatingGroup ? 'Creating...' : 'Create Group'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="flex-1 flex overflow-hidden">
         {/* Conversations List */}
         <div className="w-80 bg-white border-r flex flex-col">
