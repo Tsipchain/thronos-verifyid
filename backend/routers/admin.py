@@ -8,10 +8,15 @@ from models.auth import User
 from schemas.auth import AdminCreateUserRequest, AdminUserResponse, RoleUpdateRequest
 from services.auth import AuthService
 from sqlalchemy import select, func
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 ALLOWED_ROLES = {"admin", "manager", "agent", "client"}
+
+
+class AdminPasswordUpdateRequest(BaseModel):
+    password: str
 
 
 @router.get("/setup/status")
@@ -146,6 +151,47 @@ async def create_user(
         password_hash=password_hash,
     )
     db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: str,
+    db: DbSession,
+    _current_user=Depends(require_admin),
+):
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    await db.delete(user)
+    await db.commit()
+
+
+@router.post("/users/{user_id}/password", response_model=AdminUserResponse)
+async def reset_user_password(
+    user_id: str,
+    payload: AdminPasswordUpdateRequest,
+    db: DbSession,
+    _current_user=Depends(require_admin),
+):
+    if not payload.password or len(payload.password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password must be at least 8 characters",
+        )
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    salt, password_hash = AuthService.generate_password_hash(payload.password)
+    user.password_salt = salt
+    user.password_hash = password_hash
     await db.commit()
     await db.refresh(user)
     return user

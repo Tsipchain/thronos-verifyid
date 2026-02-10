@@ -8,7 +8,9 @@ let configLoading = true;
 
 // Default fallback configuration
 const defaultConfig = {
-  API_BASE_URL: 'http://127.0.0.1:8000', // Only used if runtime config fails to load
+  API_BASE_URL: import.meta.env.PROD
+    ? 'https://verifyid-api.thronoschain.org'
+    : 'http://127.0.0.1:8000', // Only used if runtime config/env fails to load
 };
 
 // Function to load runtime configuration
@@ -29,10 +31,18 @@ export async function loadRuntimeConfig(): Promise<void> {
         );
       }
     } else {
-      console.log(
-        '🔧 DEBUG: Config fetch failed with status:',
-        response.status
-      );
+      console.log('🔧 DEBUG: Config fetch failed with status:', response.status);
+
+      // Fallback to bootstrap.json when present
+      const bootstrapResponse = await fetch('/bootstrap.json');
+      if (bootstrapResponse.ok) {
+        const bootstrap = await bootstrapResponse.json();
+        const fromBootstrap = bootstrap?.endpoints?.verifyid_api?.[0];
+        if (typeof fromBootstrap === 'string' && fromBootstrap.trim()) {
+          runtimeConfig = { API_BASE_URL: fromBootstrap.trim() };
+          console.log('Runtime config loaded from bootstrap.json');
+        }
+      }
     }
   } catch (error) {
     console.log('Failed to load runtime config, using defaults:', error);

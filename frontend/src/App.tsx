@@ -13,6 +13,10 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import DashboardRedirect from './pages/DashboardRedirect';
 import FileUpload from './pages/FileUpload';
+import Verifications from './pages/Verifications';
+import PerformanceDashboard from './pages/PerformanceDashboard';
+import UsersPage from './pages/Users';
+import SettingsPage from './pages/Settings';
 
 const queryClient = new QueryClient();
 
@@ -46,6 +50,11 @@ const App = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             
+            <Route path="/admin/verifications" element={<Verifications />} />
+            <Route path="/admin/chat" element={<Chat />} />
+            <Route path="/admin/users" element={<UsersPage />} />
+            <Route path="/admin/reports" element={<PerformanceDashboard />} />
+            <Route path="/admin/settings" element={<SettingsPage />} />
             {/* Εδώ είναι η κρίσιμη αλλαγή: Προσθήκη /* για να δουλεύουν τα εσωτερικά μενού */}
             <Route path="/admin/*" element={<Dashboard />} />
             <Route path="/dashboard/*" element={<DashboardRedirect />} />

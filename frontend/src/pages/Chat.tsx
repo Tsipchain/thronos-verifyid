@@ -1,23 +1,27 @@
 import { useEffect, useState, useRef } from 'react';
-import { createClient } from '@metagptx/web-sdk';
+import { apiClient } from '@/lib/api';
+import { getAPIBaseURL } from '@/lib/config';
+import { getAuthToken } from '@/lib/auth';
 import { rbac } from '@/lib/rbac';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { 
-  MessageSquare, 
-  Send, 
-  Users, 
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  MessageSquare,
+  Send,
+  Users,
   Plus,
   ArrowLeft,
-  Circle
+  Circle,
+  UserCircle2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
-
-const client = createClient();
 
 interface Conversation {
   id: number;
@@ -38,7 +42,18 @@ interface Message {
   is_edited: boolean;
 }
 
-export default function Chat() {
+interface ChatUser {
+  id: string;
+  email: string;
+  name?: string | null;
+  role: string;
+}
+
+interface ChatProps {
+  embedded?: boolean;
+}
+
+export default function Chat({ embedded = false }: ChatProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -47,12 +62,20 @@ export default function Chat() {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [chatUsers, setChatUsers] = useState<ChatUser[]>([]);
+  const [directContacts, setDirectContacts] = useState<ChatUser[]>([]);
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
+  const [groupName, setGroupName] = useState('');
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [activeTab, setActiveTab] = useState<'conversations' | 'people'>('conversations');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
     checkPermissions();
     loadConversations();
+    loadDirectContacts();
   }, []);
 
   useEffect(() => {
@@ -79,7 +102,7 @@ export default function Chat() {
         description: 'You do not have permission to access chat',
         variant: 'destructive'
       });
-      navigate('/dashboard');
+      navigate('/admin');
     }
   };
 
@@ -89,10 +112,7 @@ export default function Chat() {
 
   const loadConversations = async () => {
     try {
-      const response = await client.apiCall.invoke({
-        url: '/api/v1/chat/conversations',
-        method: 'GET'
-      });
+      const response = await apiClient.get<Conversation[]>('/api/v1/chat/conversations');
       setConversations(response.data);
       if (response.data.length > 0 && !selectedConversation) {
         setSelectedConversation(response.data[0]);
@@ -109,12 +129,29 @@ export default function Chat() {
     }
   };
 
+  const loadChatUsers = async () => {
+    try {
+      const response = await apiClient.get<ChatUser[]>('/api/v1/chat/users');
+      setChatUsers(response.data);
+    } catch (error) {
+      console.error('Failed to load chat users', error);
+    }
+  };
+
+  const loadDirectContacts = async () => {
+    try {
+      const response = await apiClient.get<ChatUser[]>('/api/v1/chat/contacts');
+      setDirectContacts(response.data);
+    } catch (error) {
+      console.error('Failed to load direct contacts', error);
+    }
+  };
+
   const loadMessages = async (conversationId: number) => {
     try {
-      const response = await client.apiCall.invoke({
-        url: `/api/v1/chat/conversations/${conversationId}/messages`,
-        method: 'GET'
-      });
+      const response = await apiClient.get<Message[]>(
+        `/api/v1/chat/conversations/${conversationId}/messages`
+      );
       setMessages(response.data);
     } catch (error) {
       toast({
@@ -126,10 +163,14 @@ export default function Chat() {
   };
 
   const connectWebSocket = (conversationId: number) => {
-    const token = localStorage.getItem('auth_token') || 'demo-token';
-    const ws = new WebSocket(
-      `ws://localhost:8000/api/v1/chat/ws/${conversationId}?token=${token}`
-    );
+    const token = getAuthToken() || 'demo-token';
+    const apiBaseUrl = getAPIBaseURL();
+    const wsBaseUrl = apiBaseUrl.startsWith('https')
+      ? apiBaseUrl.replace('https', 'wss')
+      : apiBaseUrl.replace('http', 'ws');
+    const wsUrl = new URL(`/api/v1/chat/ws/${conversationId}`, wsBaseUrl);
+    wsUrl.searchParams.set('token', token);
+    const ws = new WebSocket(wsUrl.toString());
 
     ws.onopen = () => {
       console.log('WebSocket connected');
@@ -154,13 +195,9 @@ export default function Chat() {
 
     setSending(true);
     try {
-      await client.apiCall.invoke({
-        url: '/api/v1/chat/messages',
-        method: 'POST',
-        data: {
-          conversation_id: selectedConversation.id,
-          content: newMessage
-        }
+      await apiClient.post('/api/v1/chat/messages', {
+        conversation_id: selectedConversation.id,
+        content: newMessage
       });
       setNewMessage('');
     } catch (error) {
@@ -174,7 +211,85 @@ export default function Chat() {
     }
   };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
+  const openDirectChat = async (recipientUserId: string) => {
+    try {
+      const response = await apiClient.post<Conversation>('/api/v1/chat/direct', {
+        recipient_user_id: recipientUserId,
+        content: 'Started a private chat'
+      });
+
+      const existing = conversations.find((conv) => conv.id === response.data.id);
+      if (!existing) {
+        setConversations((prev) => [response.data, ...prev]);
+      }
+      setSelectedConversation(response.data);
+      setActiveTab('conversations');
+      await loadConversations();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to open direct conversation',
+        variant: 'destructive'
+      });
+    }
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      toast({
+        title: 'Missing name',
+        description: 'Please provide a group name.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    if (selectedUserIds.size === 0) {
+      toast({
+        title: 'No participants',
+        description: 'Select at least one participant.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    try {
+      setCreatingGroup(true);
+      const response = await apiClient.post<Conversation>('/api/v1/chat/conversations', {
+        conversation_type: 'group',
+        name: groupName.trim(),
+        description: '',
+        participant_ids: Array.from(selectedUserIds)
+      });
+      setConversations((prev) => [response.data, ...prev]);
+      setSelectedConversation(response.data);
+      setGroupName('');
+      setSelectedUserIds(new Set());
+      setIsGroupModalOpen(false);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to create conversation',
+        variant: 'destructive'
+      });
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
@@ -193,78 +308,174 @@ export default function Chat() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50">
-      {/* Header */}
-      <header className="bg-white border-b px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <MessageSquare className="h-6 w-6 text-blue-600" />
-            <h1 className="text-xl font-bold">Team Chat</h1>
+    <div className={`flex flex-col bg-gray-50 ${embedded ? 'h-full' : 'h-screen'}`}>
+      {!embedded && (
+        <header className="bg-white border-b px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/admin')}>
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back
+              </Button>
+              <MessageSquare className="h-6 w-6 text-blue-600" />
+              <h1 className="text-xl font-bold">Team Chat</h1>
+            </div>
+            {rbac.canManageChat() && (
+              <Button
+                size="sm"
+                onClick={() => {
+                  setIsGroupModalOpen(true);
+                  loadChatUsers();
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                New Conversation
+              </Button>
+            )}
           </div>
-          {rbac.canManageChat() && (
-            <Button size="sm">
-              <Plus className="h-4 w-4 mr-2" />
-              New Conversation
+        </header>
+      )}
+
+      <Dialog open={isGroupModalOpen} onOpenChange={setIsGroupModalOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create Group Conversation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Group name</label>
+              <Input
+                value={groupName}
+                onChange={(event) => setGroupName(event.target.value)}
+                placeholder="KYC Team"
+              />
+            </div>
+            <div>
+              <p className="text-sm font-medium mb-2">Participants</p>
+              <ScrollArea className="h-48 border rounded-md p-2">
+                <div className="space-y-2">
+                  {chatUsers.map((user) => (
+                    <label key={user.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={selectedUserIds.has(user.id)}
+                        onCheckedChange={() => toggleUserSelection(user.id)}
+                      />
+                      <span className="flex-1">{user.email}</span>
+                      <span className="text-xs text-gray-500">{user.role}</span>
+                    </label>
+                  ))}
+                  {chatUsers.length === 0 && (
+                    <p className="text-xs text-gray-500">No users available.</p>
+                  )}
+                </div>
+              </ScrollArea>
+            </div>
+            <Button onClick={handleCreateGroup} disabled={creatingGroup}>
+              {creatingGroup ? 'Creating...' : 'Create Group'}
             </Button>
-          )}
-        </div>
-      </header>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <div className="flex-1 flex overflow-hidden">
-        {/* Conversations List */}
         <div className="w-80 bg-white border-r flex flex-col">
-          <div className="p-4 border-b">
-            <h2 className="font-semibold text-gray-900">Conversations</h2>
+          <div className="p-3 border-b">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'conversations' | 'people')}>
+              <TabsList className="grid w-full grid-cols-2">
+                <TabsTrigger value="conversations">Conversations</TabsTrigger>
+                <TabsTrigger value="people">Active Users</TabsTrigger>
+              </TabsList>
+            </Tabs>
           </div>
-          <ScrollArea className="flex-1">
-            <div className="p-2">
-              {conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={`p-3 rounded-lg cursor-pointer mb-1 transition-colors ${
-                    selectedConversation?.id === conv.id
-                      ? 'bg-blue-50 border border-blue-200'
-                      : 'hover:bg-gray-50'
-                  }`}
-                  onClick={() => setSelectedConversation(conv)}
-                >
-                  <div className="flex items-start justify-between mb-1">
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
-                          {conv.conversation_type === 'group' ? <Users className="h-4 w-4" /> : conv.name?.[0] || 'D'}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">
-                          {conv.name || 'Direct Message'}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {conv.participant_count} members
-                        </p>
+
+          {activeTab === 'conversations' ? (
+            <>
+              <div className="p-4 border-b">
+                <div className="flex items-center justify-between">
+                  <h2 className="font-semibold text-gray-900">Conversations</h2>
+                  {rbac.canManageChat() && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        setIsGroupModalOpen(true);
+                        loadChatUsers();
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <ScrollArea className="flex-1">
+                <div className="p-2">
+                  {conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={`p-3 rounded-lg cursor-pointer mb-1 transition-colors ${
+                        selectedConversation?.id === conv.id
+                          ? 'bg-blue-50 border border-blue-200'
+                          : 'hover:bg-gray-50'
+                      }`}
+                      onClick={() => setSelectedConversation(conv)}
+                    >
+                      <div className="flex items-start justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback className="bg-blue-100 text-blue-600 text-xs">
+                              {conv.conversation_type === 'group' ? <Users className="h-4 w-4" /> : conv.name?.[0] || 'D'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">
+                              {conv.name || 'Direct Message'}
+                            </p>
+                            <p className="text-xs text-gray-500">
+                              {conv.participant_count} members
+                            </p>
+                          </div>
+                        </div>
+                        {conv.unread_count > 0 && (
+                          <Badge variant="default" className="ml-2">
+                            {conv.unread_count}
+                          </Badge>
+                        )}
                       </div>
                     </div>
-                    {conv.unread_count > 0 && (
-                      <Badge variant="default" className="ml-2">
-                        {conv.unread_count}
-                      </Badge>
-                    )}
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </ScrollArea>
+              </ScrollArea>
+            </>
+          ) : (
+            <ScrollArea className="flex-1 p-2">
+              <div className="space-y-2">
+                {directContacts.map((user) => (
+                  <button
+                    key={user.id}
+                    type="button"
+                    className="w-full text-left p-3 rounded-lg border hover:bg-gray-50 transition-colors"
+                    onClick={() => openDirectChat(user.id)}
+                  >
+                    <div className="flex items-center gap-2">
+                      <UserCircle2 className="h-5 w-5 text-gray-500" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{user.name || user.email}</p>
+                        <p className="text-xs text-gray-500 truncate">{user.role}</p>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+                {directContacts.length === 0 && (
+                  <p className="text-xs text-gray-500 p-2">No active contacts found.</p>
+                )}
+              </div>
+            </ScrollArea>
+          )}
         </div>
 
-        {/* Messages Area */}
         <div className="flex-1 flex flex-col">
           {selectedConversation ? (
             <>
-              {/* Conversation Header */}
               <div className="bg-white border-b px-6 py-4">
                 <div className="flex items-center justify-between">
                   <div>
@@ -282,7 +493,6 @@ export default function Chat() {
                 </div>
               </div>
 
-              {/* Messages */}
               <ScrollArea className="flex-1 p-6">
                 <div className="space-y-4">
                   {messages.map((msg) => (
@@ -312,7 +522,6 @@ export default function Chat() {
                 </div>
               </ScrollArea>
 
-              {/* Message Input */}
               {rbac.canSendMessages() && (
                 <div className="bg-white border-t p-4">
                   <div className="flex gap-2">
@@ -320,7 +529,7 @@ export default function Chat() {
                       placeholder="Type a message..."
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
-                      onKeyPress={handleKeyPress}
+                      onKeyDown={handleKeyDown}
                       disabled={sending}
                       className="flex-1"
                     />

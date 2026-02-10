@@ -1,14 +1,18 @@
 import { useEffect, useState } from 'react';
-import { createClient } from '@metagptx/web-sdk';
+import { useNavigate } from 'react-router-dom';
+import { apiClient } from '@/lib/api';
+import { authApi } from '@/lib/auth';
+import { getAPIBaseURL } from '@/lib/config';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Video, Clock, AlertTriangle, Phone, User, CheckCircle } from 'lucide-react';
+import { Video, Clock, AlertTriangle, Phone, User, CheckCircle, Bot } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
-
-const client = createClient();
+import AIAssistantModal from '@/components/AIAssistantModal';
+import LanguageSelector from '@/components/LanguageSelector';
+import ChatWidget from '@/components/ChatWidget';
 
 interface VideoCallRequest {
   id: number;
@@ -33,11 +37,14 @@ interface AgentStatus {
 }
 
 export default function CallAgentDashboard() {
+  const navigate = useNavigate();
   const [pendingCalls, setPendingCalls] = useState<VideoCallRequest[]>([]);
   const [activeCalls, setActiveCalls] = useState<number>(0);
   const [agentStatus, setAgentStatus] = useState<string>('offline');
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [ws, setWs] = useState<WebSocket | null>(null);
+  const [aiModalOpen, setAiModalOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,11 +53,14 @@ export default function CallAgentDashboard() {
 
   const checkAuth = async () => {
     try {
-      const user = await client.auth.me();
-      setCurrentUser(user.data);
+      const user = await authApi.getCurrentUser();
+      if (!user) {
+        throw new Error('Authentication required');
+      }
+      setCurrentUser(user);
       
       // Connect WebSocket
-      connectWebSocket(user.data.id);
+      connectWebSocket(user.id);
       
       // Set agent status to online
       await updateAgentStatus('online');
@@ -59,7 +69,7 @@ export default function CallAgentDashboard() {
       await fetchPendingCalls();
       
       // Start heartbeat
-      startHeartbeat(user.data.id);
+      startHeartbeat(user.id);
     } catch (error) {
       console.error('Authentication failed:', error);
       toast({
@@ -70,11 +80,27 @@ export default function CallAgentDashboard() {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+      navigate('/login');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to logout',
+        variant: 'destructive'
+      });
+    }
+  };
+
   const connectWebSocket = (userId: string) => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/api/v1/video-calls/ws/${userId}`;
+    const apiBaseUrl = getAPIBaseURL();
+    const wsBaseUrl = apiBaseUrl.startsWith('https')
+      ? apiBaseUrl.replace('https', 'wss')
+      : apiBaseUrl.replace('http', 'ws');
+    const wsUrl = new URL(`/api/v1/video-calls/ws/${userId}`, wsBaseUrl);
     
-    const websocket = new WebSocket(wsUrl);
+    const websocket = new WebSocket(wsUrl.toString());
     
     websocket.onopen = () => {
       console.log('WebSocket connected');
@@ -128,15 +154,11 @@ export default function CallAgentDashboard() {
 
   const fetchPendingCalls = async () => {
     try {
-      const response = await client.apiCall.invoke({
-        url: '/api/v1/video-calls/pending',
-        method: 'GET'
-      });
-      
+      const response = await apiClient.get('/api/v1/video-calls/pending');
       setPendingCalls(response.data);
     } catch (error: any) {
       console.error('Failed to fetch pending calls:', error);
-      const detail = error?.data?.detail || error?.response?.data?.detail || error.message;
+      const detail = error?.response?.data?.detail || error.message;
       toast({
         title: 'Error',
         description: detail,
@@ -147,11 +169,7 @@ export default function CallAgentDashboard() {
 
   const updateAgentStatus = async (status: string) => {
     try {
-      await client.apiCall.invoke({
-        url: '/api/v1/video-calls/agents/status',
-        method: 'POST',
-        data: { status }
-      });
+      await apiClient.post('/api/v1/video-calls/agents/status', { status });
       setAgentStatus(status);
     } catch (error) {
       console.error('Failed to update agent status:', error);
@@ -161,17 +179,10 @@ export default function CallAgentDashboard() {
   const acceptCall = async (callId: number) => {
     try {
       // Assign call to current agent
-      await client.apiCall.invoke({
-        url: `/api/v1/video-calls/${callId}/assign`,
-        method: 'POST',
-        data: { agent_id: currentUser.id }
-      });
+      await apiClient.post(`/api/v1/video-calls/${callId}/assign`, { agent_id: currentUser.id });
       
       // Start the call
-      await client.apiCall.invoke({
-        url: `/api/v1/video-calls/${callId}/start`,
-        method: 'POST'
-      });
+      await apiClient.post(`/api/v1/video-calls/${callId}/start`);
       
       toast({
         title: 'Call Started',
@@ -184,7 +195,7 @@ export default function CallAgentDashboard() {
       // In a real implementation, open video call interface
       // window.open(`/video-call/${callId}`, '_blank');
     } catch (error: any) {
-      const detail = error?.data?.detail || error?.response?.data?.detail || error.message;
+      const detail = error?.response?.data?.detail || error.message;
       toast({
         title: 'Error',
         description: detail,
@@ -221,21 +232,38 @@ export default function CallAgentDashboard() {
   };
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="container mx-auto p-6 pb-24">
       <Toaster />
       
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">Call Agent Dashboard</h1>
-        <div className="flex gap-4 items-center">
-          <Badge className={agentStatus === 'online' ? 'bg-green-500' : 'bg-gray-500'}>
-            {agentStatus === 'online' ? '● Online' : '○ Offline'}
-          </Badge>
-          <span className="text-sm text-gray-500">
-            Active Calls: {activeCalls}/3
-          </span>
-          <span className="text-sm text-gray-500">
-            Queue: {pendingCalls.length}
-          </span>
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Call Agent Dashboard</h1>
+          <div className="flex flex-wrap gap-4 items-center">
+            <Badge className={agentStatus === 'online' ? 'bg-green-500' : 'bg-gray-500'}>
+              {agentStatus === 'online' ? '● Online' : '○ Offline'}
+            </Badge>
+            <span className="text-sm text-gray-500">
+              Active Calls: {activeCalls}/3
+            </span>
+            <span className="text-sm text-gray-500">
+              Queue: {pendingCalls.length}
+            </span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <LanguageSelector />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAiModalOpen(true)}
+            className="gap-2"
+          >
+            <Bot className="h-4 w-4" />
+            AI Assistant
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleLogout}>
+            Logout
+          </Button>
         </div>
       </div>
 
@@ -331,6 +359,23 @@ export default function CallAgentDashboard() {
           </Card>
         </TabsContent>
       </Tabs>
+      <AIAssistantModal open={aiModalOpen} onOpenChange={setAiModalOpen} />
+      <ChatWidget open={chatOpen} onOpenChange={setChatOpen} />
+      <footer className="fixed bottom-0 left-0 right-0 border-t bg-white/90 backdrop-blur dark:bg-gray-900/90">
+        <div className="container mx-auto flex items-center justify-between px-6 py-3">
+          <span className="text-sm text-gray-500 dark:text-gray-400">
+            Team communication
+          </span>
+          <Button
+            size="sm"
+            onClick={() => setChatOpen(true)}
+            className="gap-2"
+          >
+            <User className="h-4 w-4" />
+            Open Team Chat
+          </Button>
+        </div>
+      </footer>
     </div>
   );
 }

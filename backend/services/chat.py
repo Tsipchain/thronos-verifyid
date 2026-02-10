@@ -18,6 +18,65 @@ from typing import List, Optional, Tuple
 
 
 class ChatService:
+
+    @staticmethod
+    async def ensure_user_in_default_group(
+        db: AsyncSession,
+        user_id: str,
+        username: str,
+        default_group_name: str = "Main Discussion",
+    ) -> None:
+        """Ensure user is in default team discussion group."""
+        group_result = await db.execute(
+            select(Conversations).where(
+                and_(
+                    Conversations.conversation_type == "group",
+                    Conversations.name == default_group_name,
+                    Conversations.is_active == True,
+                )
+            )
+        )
+        group = group_result.scalar_one_or_none()
+
+        if not group:
+            group = Conversations(
+                user_id=user_id,
+                conversation_type="group",
+                name=default_group_name,
+                description="Main team discussion room",
+            )
+            db.add(group)
+            await db.commit()
+            await db.refresh(group)
+
+        existing_participant = await db.execute(
+            select(ConversationParticipants).where(
+                and_(
+                    ConversationParticipants.conversation_id == group.id,
+                    ConversationParticipants.user_id == user_id,
+                )
+            )
+        )
+        if existing_participant.scalar_one_or_none():
+            return
+
+        # First member of a new room is admin, all others are members
+        participant_count = await db.execute(
+            select(func.count(ConversationParticipants.id)).where(
+                ConversationParticipants.conversation_id == group.id
+            )
+        )
+        role = "admin" if (participant_count.scalar() or 0) == 0 else "member"
+
+        db.add(
+            ConversationParticipants(
+                user_id=user_id,
+                conversation_id=group.id,
+                username=username,
+                role=role,
+            )
+        )
+        await db.commit()
     
     @staticmethod
     async def create_conversation(

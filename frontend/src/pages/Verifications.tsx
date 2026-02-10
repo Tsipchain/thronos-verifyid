@@ -29,7 +29,7 @@ export default function Verifications() {
         description: 'You do not have permission to access verifications',
         variant: 'destructive'
       });
-      navigate('/dashboard');
+      navigate('/admin');
     }
     setLoading(false);
   };
@@ -73,7 +73,7 @@ export default function Verifications() {
       <header className="bg-white border-b px-6 py-4">
         <div className="flex items-center justify-between max-w-7xl mx-auto">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/admin')}>
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back
             </Button>
