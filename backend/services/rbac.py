@@ -67,7 +67,7 @@ class RBACService:
             
             # Chat permissions
             {"name": "chat.read", "resource": "chat", "action": "read", "description": "View chat messages"},
-            {"name": "chat.send", "resource": "chat", "action": "create", "description": "Send chat messages"},
+            {"name": "chat.send", "resource": "chat", "action": "send", "description": "Send chat messages"},
             {"name": "chat.manage", "resource": "chat", "action": "manage", "description": "Manage chat rooms"},
             
             # User permissions
@@ -90,6 +90,15 @@ class RBACService:
 
         for perm_data in permissions_data:
             if perm_data["name"] in permission_objects:
+                existing_permission = permission_objects[perm_data["name"]]
+                if (
+                    existing_permission.resource != perm_data["resource"]
+                    or existing_permission.action != perm_data["action"]
+                    or existing_permission.description != perm_data["description"]
+                ):
+                    existing_permission.resource = perm_data["resource"]
+                    existing_permission.action = perm_data["action"]
+                    existing_permission.description = perm_data["description"]
                 continue
             permission = Permissions(**perm_data)
             db.add(permission)
@@ -127,6 +136,7 @@ class RBACService:
             "management": [
                 "verifications.read",
                 "chat.read",
+                "chat.send",
                 "chat.manage",
                 "users.read",
                 "reports.read",
@@ -136,6 +146,7 @@ class RBACService:
             "manager": [
                 "verifications.read",
                 "chat.read",
+                "chat.send",
                 "chat.manage",
                 "users.read",
                 "reports.read",
