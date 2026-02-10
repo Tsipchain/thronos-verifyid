@@ -59,6 +59,20 @@ class Settings(BaseSettings):
     thronos_ai_core_url: str = "https://thronos-v3-6.onrender.com"
     thronos_admin_secret: str = ""
 
+    # Email / Domain Services
+    email_enabled: bool = False
+    email_provider: str = "smtp"
+    email_from_address: str = "noreply@thronoschain.org"
+    email_from_name: str = "Thronos VerifyID"
+    email_reply_to: str = "support@thronoschain.org"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+
+
     @property
     def backend_url(self) -> str:
         """Generate backend URL from host and port."""
