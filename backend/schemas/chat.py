@@ -23,6 +23,7 @@ class ConversationResponse(BaseModel):
     participant_count: int = 0
     unread_count: int = 0
     last_message: Optional[str] = None
+    can_delete: bool = False
 
     class Config:
         from_attributes = True
@@ -103,7 +104,7 @@ class UserPresenceResponse(BaseModel):
 
 class DirectMessageRequest(BaseModel):
     recipient_user_id: str
-    content: str
+    content: str = ""
 
 
 class WebSocketMessagePayload(BaseModel):

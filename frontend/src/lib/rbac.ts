@@ -110,7 +110,7 @@ class RBACManager {
   }
 
   isKYCAgent(): boolean {
-    return this.hasRole('kyc_agent');
+    return this.hasRole('kyc_agent') || this.hasRole('agent');
   }
 
   isITStaff(): boolean {
@@ -118,7 +118,7 @@ class RBACManager {
   }
 
   isManagement(): boolean {
-    return this.hasRole('management');
+    return this.hasRole('management') || this.hasRole('manager');
   }
 
   isAdmin(): boolean {

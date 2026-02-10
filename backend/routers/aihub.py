@@ -8,7 +8,10 @@ import json
 import logging
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, status
+from pydantic import BaseModel, Field
+from core.config import settings
 from schemas.aihub import GenImgRequest, GenImgResponse, GenTxtRequest
 from services.aihub import AIHubService, InvalidImageInputError
 from sse_starlette.sse import EventSourceResponse
@@ -96,6 +99,21 @@ def extract_error_message(error: Any) -> str:
 router = APIRouter(prefix="/api/v1/aihub", tags=["aihub"])
 
 
+class ThronosChatMessage(BaseModel):
+    role: str
+    content: str
+
+
+class ThronosChatRequest(BaseModel):
+    messages: list[ThronosChatMessage]
+    model: str = Field(default="claude-3.5-sonnet-latest")
+    temperature: float = Field(default=0.3, ge=0.0, le=1.0)
+
+
+class ThronosChatResponse(BaseModel):
+    content: str
+
+
 @router.post("/gentxt")
 async def generate_text(
     request: GenTxtRequest,
@@ -145,6 +163,37 @@ async def generate_text(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=extract_error_message(e),
         )
+
+
+@router.post("/thronos-chat", response_model=ThronosChatResponse)
+async def thronos_chat(request: ThronosChatRequest):
+    """Proxy chat requests to Thronos AI Core."""
+    if not settings.thronos_ai_core_url:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="AI Core is not configured")
+
+    headers = {"X-Admin-Secret": settings.thronos_admin_secret} if settings.thronos_admin_secret else {}
+    payload = {
+        "model": request.model,
+        "messages": [message.model_dump() for message in request.messages],
+        "temperature": request.temperature,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(f"{settings.thronos_ai_core_url}/api/ai/chat", json=payload, headers=headers)
+        if response.status_code != status.HTTP_200_OK:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"AI Core returned status {response.status_code}",
+            )
+        data = response.json()
+        content = data.get("response") or data.get("content") or ""
+        return ThronosChatResponse(content=content)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"AI Core request failed: {e}")
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI Core request failed")
 
 
 @router.post("/genimg", response_model=GenImgResponse)

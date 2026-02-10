@@ -88,6 +88,8 @@ app = FastAPI(
 # MODULE_MIDDLEWARE_START
 # Default origins for production deployments
 DEFAULT_ORIGINS = [
+    "https://verifyid.thronoschain.org",
+    "https://verifyid-api.thronoschain.org",
     "https://thronos-verifyid.vercel.app",
     "https://thronos-verifyid.up.railway.app",
     "http://localhost:5173",
