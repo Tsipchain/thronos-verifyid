@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { createClient } from '@metagptx/web-sdk';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -7,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Activity, AlertTriangle, Clock, Database, TrendingUp, Zap } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { authApi } from '@/lib/auth';
 
 const client = createClient();
 
@@ -51,6 +53,7 @@ interface PerformanceAlert {
 }
 
 export default function PerformanceDashboard() {
+  const navigate = useNavigate();
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [slowQueries, setSlowQueries] = useState<SlowQuery[]>([]);
   const [endpoints, setEndpoints] = useState<EndpointPerformance[]>([]);
@@ -58,6 +61,19 @@ export default function PerformanceDashboard() {
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState(24);
   const { toast } = useToast();
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+      navigate('/login');
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to logout',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -202,6 +218,9 @@ export default function PerformanceDashboard() {
             <Button onClick={fetchData} variant="outline">
               <Activity className="w-4 h-4 mr-2" />
               Refresh
+            </Button>
+            <Button variant="outline" onClick={handleLogout}>
+              Logout
             </Button>
           </div>
         </div>

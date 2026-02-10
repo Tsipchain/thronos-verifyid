@@ -4,9 +4,19 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Shield, CheckCircle2, Download, Share2, FileCheck, Video, PenTool, Clock, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { authApi } from '@/lib/auth';
 
 export default function VerificationDashboard() {
   const navigate = useNavigate();
+
+  const handleLogout = async () => {
+    try {
+      await authApi.logout();
+      navigate('/login');
+    } catch (error) {
+      navigate('/login');
+    }
+  };
 
   const verificationSteps = [
     {
@@ -72,7 +82,7 @@ export default function VerificationDashboard() {
             <Button variant="ghost" className="text-slate-300 hover:text-slate-50" onClick={() => navigate('/dashboard')}>
               Dashboard
             </Button>
-            <Button variant="ghost" className="text-slate-300 hover:text-slate-50" onClick={() => navigate('/')}>
+            <Button variant="ghost" className="text-slate-300 hover:text-slate-50" onClick={handleLogout}>
               Logout
             </Button>
           </div>
