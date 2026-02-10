@@ -11,7 +11,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { MessageSquare, Send, Users, Plus, ArrowLeft, Circle, UserCircle2, Lock } from 'lucide-react';
+import { MessageSquare, Send, Users, Plus, ArrowLeft, Circle, UserCircle2, Lock, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 
@@ -23,6 +23,7 @@ interface Conversation {
   participant_count: number;
   unread_count: number;
   last_message_at: string;
+  can_delete?: boolean;
 }
 
 interface Message {
@@ -113,6 +114,7 @@ export default function Chat({ embedded = false }: ChatProps) {
   useEffect(() => {
     if (selectedConversation) {
       loadMessages(selectedConversation.id);
+      markConversationAsRead(selectedConversation.id);
       connectWebSocket(selectedConversation.id);
     }
     return () => {
@@ -204,6 +206,17 @@ export default function Chat({ embedded = false }: ChatProps) {
     }
   };
 
+  const markConversationAsRead = async (conversationId: number) => {
+    try {
+      await apiClient.post(`/api/v1/chat/conversations/${conversationId}/read`);
+      setConversations((prev) => prev.map((conv) => (
+        conv.id === conversationId ? { ...conv, unread_count: 0 } : conv
+      )));
+    } catch {
+      // non-blocking
+    }
+  };
+
   const connectWebSocket = (conversationId: number) => {
     const token = getAuthToken() || 'demo-token';
     const apiBaseUrl = getAPIBaseURL();
@@ -215,7 +228,17 @@ export default function Chat({ embedded = false }: ChatProps) {
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'message') {
-        setMessages((prev) => [...prev, data.message]);
+        const incomingConversationId = data.message?.conversation_id;
+        if (incomingConversationId === selectedConversation?.id) {
+          setMessages((prev) => [...prev, data.message]);
+          markConversationAsRead(selectedConversation.id);
+        } else if (incomingConversationId) {
+          setConversations((prev) => prev.map((conv) => (
+            conv.id === incomingConversationId
+              ? { ...conv, unread_count: (conv.unread_count || 0) + 1 }
+              : conv
+          )));
+        }
       }
     };
 
@@ -259,6 +282,22 @@ export default function Chat({ embedded = false }: ChatProps) {
       await loadConversations();
     } catch {
       toast({ title: 'Error', description: 'Failed to open direct conversation', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteConversation = async (conversation: Conversation) => {
+    try {
+      await apiClient.delete(`/api/v1/chat/conversations/${conversation.id}`);
+      const updated = conversations.filter((conv) => conv.id !== conversation.id);
+      setConversations(updated);
+      if (selectedConversation?.id === conversation.id) {
+        setSelectedConversation(updated[0] || null);
+        setMessages([]);
+      }
+      toast({ title: 'Deleted', description: 'Conversation deleted successfully.' });
+    } catch (error) {
+      const detail = (error as { data?: { detail?: string } })?.data?.detail || 'Cannot delete this conversation';
+      toast({ title: 'Error', description: detail, variant: 'destructive' });
     }
   };
 
@@ -423,7 +462,21 @@ export default function Chat({ embedded = false }: ChatProps) {
                           {conv.conversation_type === 'group' ? `${conv.participant_count} members` : 'Private chat'}
                         </p>
                       </div>
-                      {conv.unread_count > 0 && <Badge>{conv.unread_count}</Badge>}
+                      <div className="flex items-center gap-2">
+                        {conv.unread_count > 0 && <Badge>{conv.unread_count}</Badge>}
+                        {conv.can_delete && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteConversation(conv);
+                            }}
+                            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            title="Delete conversation"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
                 ))}

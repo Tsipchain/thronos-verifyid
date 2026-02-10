@@ -148,7 +148,8 @@ async def create_conversation(
             updated_at=conversation.updated_at,
             last_message_at=conversation.last_message_at,
             participant_count=len(data.participant_ids) + 1,
-            unread_count=0
+            unread_count=0,
+            can_delete=True
         )
     except Exception as e:
         logger.error(f"Error creating conversation: {e}")
@@ -164,7 +165,8 @@ async def get_conversations(
     try:
         await ChatService.ensure_user_in_default_group(db, current_user.id, current_user.email)
         conversations_data = await ChatService.get_user_conversations(db, current_user.id)
-        
+        can_manage_chat = await RBACService.check_permission(db, current_user.id, "chat", "manage")
+
         return [
             ConversationResponse(
                 id=conv.id,
@@ -177,7 +179,8 @@ async def get_conversations(
                 updated_at=conv.updated_at,
                 last_message_at=conv.last_message_at,
                 participant_count=participant_count,
-                unread_count=unread_count
+                unread_count=unread_count,
+                can_delete=bool(can_manage_chat or conv.user_id == current_user.id),
             )
             for conv, participant_count, unread_count in conversations_data
         ]
@@ -432,11 +435,35 @@ async def send_direct_message(
             updated_at=conversation.updated_at,
             last_message_at=conversation.last_message_at,
             participant_count=2,
-            unread_count=0
+            unread_count=0,
+            can_delete=True
         )
     except Exception as e:
         logger.error(f"Error sending direct message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/conversations/{conversation_id}")
+async def delete_conversation(
+    conversation_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Delete/deactivate a conversation.
+
+    - Admin/IT can delete any chat.
+    - Agents/managers can delete only chats they created.
+    """
+    can_manage_chat = await RBACService.check_permission(db, current_user.id, "chat", "manage")
+    success = await ChatService.delete_conversation_for_user(
+        db,
+        conversation_id,
+        current_user.id,
+        can_manage_chat=bool(can_manage_chat),
+    )
+    if not success:
+        raise HTTPException(status_code=403, detail="Cannot delete this conversation")
+    return {"success": True}
 
 
 @router.delete("/messages/{message_id}")

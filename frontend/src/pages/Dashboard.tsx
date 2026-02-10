@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { rbac } from '@/lib/rbac';
 import { authApi } from '@/lib/auth';
+import { apiClient } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -36,10 +37,33 @@ export default function Dashboard() {
   const [roles, setRoles] = useState<string[]>([]);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
 
   useEffect(() => {
     checkAuth();
   }, []);
+
+
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+
+    const fetchUnread = async () => {
+      if (!rbac.canAccessChat()) return;
+      try {
+        const response = await apiClient.get<Array<{ unread_count?: number }>>('/api/v1/chat/conversations');
+        const total = response.data.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+        setChatUnreadCount(total);
+      } catch {
+        // ignore silent polling errors
+      }
+    };
+
+    fetchUnread();
+    intervalId = setInterval(fetchUnread, 15000);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [chatOpen]);
 
   const checkAuth = async () => {
     try {
@@ -246,16 +270,24 @@ export default function Dashboard() {
       </main>
 
       <AIAssistantModal open={aiModalOpen} onOpenChange={setAiModalOpen} />
-      <ChatWidget open={chatOpen} onOpenChange={setChatOpen} />
+      <ChatWidget open={chatOpen} onOpenChange={(open) => {
+        setChatOpen(open);
+        if (open) setChatUnreadCount(0);
+      }} />
       {rbac.canAccessChat() && (
         <footer className="fixed bottom-0 left-0 right-0 border-t bg-white/90 backdrop-blur dark:bg-gray-900/90">
           <div className="max-w-7xl mx-auto flex items-center justify-between px-4 sm:px-6 lg:px-8 py-3">
             <span className="text-sm text-gray-500 dark:text-gray-400">
               Team communication
             </span>
-            <Button size="sm" onClick={() => setChatOpen(true)} className="gap-2">
+            <Button size="sm" onClick={() => { setChatOpen(true); setChatUnreadCount(0); }} className="gap-2 relative">
               <MessageSquare className="h-4 w-4" />
               Open Team Chat
+              {chatUnreadCount > 0 && (
+                <span className="absolute -top-2 -right-2 min-w-5 h-5 px-1 rounded-full bg-red-500 text-white text-[10px] leading-5 text-center">
+                  {chatUnreadCount > 99 ? '99+' : chatUnreadCount}
+                </span>
+              )}
             </Button>
           </div>
         </footer>
