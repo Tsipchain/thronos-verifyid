@@ -1,8 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from core.auth import AccessTokenError, decode_access_token
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from dependencies.database import get_db
 from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
+from services.rbac import RBACService
+from models.auth import User
+from pydantic import BaseModel
 from schemas.chat import (
     ConversationCreate,
     ConversationResponse,
@@ -23,6 +28,13 @@ import logging
 
 router = APIRouter(prefix="/api/v1/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
+
+
+class ChatUserResponse(BaseModel):
+    id: str
+    email: str
+    name: str | None = None
+    role: str
 
 
 class ConnectionManager:
@@ -116,6 +128,11 @@ async def create_conversation(
 ):
     """Create a new conversation (group or direct)"""
     try:
+        if data.conversation_type == "group":
+            can_manage_chat = await RBACService.check_permission(db, current_user.id, "chat", "manage")
+            if not can_manage_chat:
+                raise HTTPException(status_code=403, detail="Only admin/IT can create group conversations")
+
         conversation = await ChatService.create_conversation(
             db, current_user.id, current_user.email, data
         )
@@ -145,6 +162,7 @@ async def get_conversations(
 ):
     """Get all conversations for the current user"""
     try:
+        await ChatService.ensure_user_in_default_group(db, current_user.id, current_user.email)
         conversations_data = await ChatService.get_user_conversations(db, current_user.id)
         
         return [
@@ -168,6 +186,46 @@ async def get_conversations(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/contacts", response_model=List[ChatUserResponse])
+async def get_chat_contacts(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get users available for direct chat (agents/managers/admins)."""
+    has_chat_access = await RBACService.check_permission(db, current_user.id, "chat", "read")
+    if not has_chat_access:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to access chat contacts")
+
+    result = await db.execute(
+        select(User).where(User.is_active == True, User.role.in_(["admin", "manager", "agent", "it_staff"]))
+    )
+    users = result.scalars().all()
+
+    contacts: list[ChatUserResponse] = []
+    for user in users:
+        if user.id == current_user.id:
+            continue
+        roles = await RBACService.get_user_roles(db, user.id)
+        role_label = roles[0].display_name if roles else user.role
+        contacts.append(ChatUserResponse(id=user.id, email=user.email, name=user.name, role=role_label))
+    return contacts
+
+
+@router.get("/users", response_model=List[ChatUserResponse])
+async def get_chat_users(
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get users available for chat management (requires chat.manage permission)."""
+    has_permission = await RBACService.check_permission(db, current_user.id, "chat", "manage")
+    if not has_permission:
+        raise HTTPException(status_code=403, detail="Insufficient permissions to manage chat users")
+
+    result = await db.execute(select(User))
+    users = result.scalars().all()
+    return [ChatUserResponse(id=user.id, email=user.email, name=user.name, role=user.role) for user in users]
+
+
 @router.post("/messages", response_model=MessageResponse)
 async def send_message(
     data: MessageCreate,
@@ -176,6 +234,10 @@ async def send_message(
 ):
     """Send a message to a conversation"""
     try:
+        can_send_messages = await RBACService.check_permission(db, current_user.id, "chat", "send")
+        if not can_send_messages:
+            raise HTTPException(status_code=403, detail="Insufficient permissions to send messages")
+
         message = await ChatService.send_message(
             db, current_user.id, current_user.email, data
         )
@@ -207,6 +269,8 @@ async def send_message(
         )
         
         return message
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error sending message: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -346,15 +410,16 @@ async def send_direct_message(
             db, current_user.id, current_user.email, conversation_data
         )
         
-        # Send message
-        message_data = MessageCreate(
-            conversation_id=conversation.id,
-            content=data.content
-        )
-        
-        await ChatService.send_message(
-            db, current_user.id, current_user.email, message_data
-        )
+        # Send an optional bootstrap message only when content is provided
+        if data.content and data.content.strip():
+            message_data = MessageCreate(
+                conversation_id=conversation.id,
+                content=data.content.strip()
+            )
+
+            await ChatService.send_message(
+                db, current_user.id, current_user.email, message_data
+            )
         
         return ConversationResponse(
             id=conversation.id,
@@ -409,9 +474,16 @@ async def websocket_endpoint(
     db: AsyncSession = Depends(get_db)
 ):
     """WebSocket endpoint for real-time chat"""
-    # Validate token and get user
-    # Note: In production, implement proper token validation
-    user_id = token  # Simplified for demo
+    # Validate token and resolve user id from JWT subject
+    try:
+        payload = decode_access_token(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            await websocket.close(code=1008, reason="Invalid authentication token")
+            return
+    except AccessTokenError:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
     
     await manager.connect(websocket, conversation_id, user_id)
     
@@ -425,7 +497,7 @@ async def websocket_endpoint(
         
         # Update user presence to online
         presence_data = UserPresenceUpdate(status="online")
-        await ChatService.update_user_presence(db, user_id, f"User-{user_id[:8]}", presence_data)
+        await ChatService.update_user_presence(db, user_id, f"User-{str(user_id)[:8]}", presence_data)
         
         # Listen for messages
         while True:
@@ -442,7 +514,7 @@ async def websocket_endpoint(
         # Update user presence to offline if no other connections
         if user_id not in manager.user_connections or not manager.user_connections[user_id]:
             presence_data = UserPresenceUpdate(status="offline")
-            await ChatService.update_user_presence(db, user_id, f"User-{user_id[:8]}", presence_data)
+            await ChatService.update_user_presence(db, user_id, f"User-{str(user_id)[:8]}", presence_data)
         
         logger.info(f"WebSocket disconnected for user {user_id} in conversation {conversation_id}")
     except Exception as e:

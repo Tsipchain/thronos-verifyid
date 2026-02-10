@@ -89,6 +89,17 @@ async def get_settings(current_user: UserResponse = Depends(get_admin_user)):
             "JWT_EXPIRE_MINUTES": "JWT expiration time (minutes)",
             "ADMIN_USER_ID": "Admin user ID",
             "ADMIN_USER_EMAIL": "Admin user email",
+            "EMAIL_ENABLED": "Enable outgoing email delivery",
+            "EMAIL_PROVIDER": "Email provider (smtp)",
+            "EMAIL_FROM_ADDRESS": "Sender email address",
+            "EMAIL_FROM_NAME": "Sender display name",
+            "EMAIL_REPLY_TO": "Reply-to address",
+            "SMTP_HOST": "SMTP server host",
+            "SMTP_PORT": "SMTP server port",
+            "SMTP_USERNAME": "SMTP username",
+            "SMTP_PASSWORD": "SMTP password",
+            "SMTP_USE_TLS": "Enable STARTTLS for SMTP",
+            "SMTP_USE_SSL": "Use SMTPS (implicit SSL)",
         }
 
         frontend_descriptions = {"VITE_API_BASE_URL": "Base API URL", "VITE_FRONTEND_URL": "Frontend URL"}
