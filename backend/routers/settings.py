@@ -100,6 +100,7 @@ async def get_settings(current_user: UserResponse = Depends(get_admin_user)):
             "SMTP_PASSWORD": "SMTP password",
             "SMTP_USE_TLS": "Enable STARTTLS for SMTP",
             "SMTP_USE_SSL": "Use SMTPS (implicit SSL)",
+            "SALES_INBOX_EMAIL": "Sales inbox for service lead notifications",
         }
 
         frontend_descriptions = {"VITE_API_BASE_URL": "Base API URL", "VITE_FRONTEND_URL": "Frontend URL"}

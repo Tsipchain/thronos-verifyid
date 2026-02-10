@@ -71,6 +71,7 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
+    sales_inbox_email: str = "sales@thronoschain.org"
 
 
     @property
