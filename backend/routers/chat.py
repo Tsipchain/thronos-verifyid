@@ -410,15 +410,16 @@ async def send_direct_message(
             db, current_user.id, current_user.email, conversation_data
         )
         
-        # Send message
-        message_data = MessageCreate(
-            conversation_id=conversation.id,
-            content=data.content
-        )
-        
-        await ChatService.send_message(
-            db, current_user.id, current_user.email, message_data
-        )
+        # Send an optional bootstrap message only when content is provided
+        if data.content and data.content.strip():
+            message_data = MessageCreate(
+                conversation_id=conversation.id,
+                content=data.content.strip()
+            )
+
+            await ChatService.send_message(
+                db, current_user.id, current_user.email, message_data
+            )
         
         return ConversationResponse(
             id=conversation.id,

@@ -103,7 +103,7 @@ class UserPresenceResponse(BaseModel):
 
 class DirectMessageRequest(BaseModel):
     recipient_user_id: str
-    content: str
+    content: str = ""
 
 
 class WebSocketMessagePayload(BaseModel):
