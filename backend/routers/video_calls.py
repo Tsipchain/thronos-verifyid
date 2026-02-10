@@ -11,7 +11,7 @@ from schemas.auth import UserResponse
 from services.video_call_service import VideoCallService
 from models.video_call_queue import VideoCallQueue, CallStatus, CallPriority
 from models.agent_availability import AgentAvailability, AgentStatus
-from lib.rbac import rbac
+from services.rbac import RBACService
 
 logger = logging.getLogger(__name__)
 
@@ -143,9 +143,10 @@ async def get_pending_calls(
 ):
     """Get pending video calls (requires Agent or Manager role)"""
     try:
-        # Check if user has Agent or Manager role
-        await rbac.initialize()
-        if not (rbac.canAccessVerifications() or rbac.canAccessUsers()):
+        # Check if user has Agent or Manager permissions
+        can_access = await RBACService.check_permission(db, current_user.id, "verifications", "read")
+        can_manage = await RBACService.check_permission(db, current_user.id, "users", "read")
+        if not (can_access or can_manage):
             raise HTTPException(status_code=403, detail="Access denied. Agent or Manager role required.")
 
         calls = await VideoCallService.get_pending_calls(db)
