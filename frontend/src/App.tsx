@@ -17,6 +17,7 @@ import Verifications from './pages/Verifications';
 import PerformanceDashboard from './pages/PerformanceDashboard';
 import UsersPage from './pages/Users';
 import SettingsPage from './pages/Settings';
+import Credits from './pages/Credits';
 
 const queryClient = new QueryClient();
 
@@ -57,12 +58,14 @@ const App = () => {
             <Route path="/admin/settings" element={<SettingsPage />} />
             {/* Εδώ είναι η κρίσιμη αλλαγή: Προσθήκη /* για να δουλεύουν τα εσωτερικά μενού */}
             <Route path="/admin/*" element={<Dashboard />} />
+            <Route path="/manager/*" element={<Dashboard />} />
             <Route path="/dashboard/*" element={<DashboardRedirect />} />
             
             <Route path="/agent/*" element={<CallAgentDashboard />} />
             <Route path="/client/*" element={<ClientPortal />} />
             <Route path="/client/upload" element={<FileUpload />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/credits" element={<Credits />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

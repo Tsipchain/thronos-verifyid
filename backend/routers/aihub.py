@@ -1,19 +1,27 @@
 """
 AI Hub router module.
 Provides Generate Text (gentxt) and Generate Image (genimg) API endpoints.
+thronos-chat: authenticated chat with credit deduction, Thronos AI Core primary
+with OpenAI-compatible gentxt fallback, and document fraud knowledge injection.
 """
 
 import ast
 import json
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from core.config import settings
-from schemas.aihub import GenImgRequest, GenImgResponse, GenTxtRequest
+from core.database import get_db
+from dependencies.auth import get_current_user
+from schemas.auth import UserResponse
+from schemas.aihub import ChatMessage, GenImgRequest, GenImgResponse, GenTxtRequest
 from services.aihub import AIHubService, InvalidImageInputError
+from services.fraud_knowledge import get_fraud_knowledge_system_prompt
 from sse_starlette.sse import EventSourceResponse
 
 logger = logging.getLogger(__name__)
@@ -106,12 +114,54 @@ class ThronosChatMessage(BaseModel):
 
 class ThronosChatRequest(BaseModel):
     messages: list[ThronosChatMessage]
-    model: str = Field(default="claude-3.5-sonnet-latest")
+    # First available model on Thronos AI Core / gentxt fallback
+    model: str = Field(default="claude-sonnet-4-6")
     temperature: float = Field(default=0.3, ge=0.0, le=1.0)
 
 
 class ThronosChatResponse(BaseModel):
     content: str
+    credits_used: int = 10
+    credits_remaining: Optional[int] = None
+
+
+async def _chat_via_thronos_core(messages: list[dict], model: str, temperature: float) -> Optional[str]:
+    """Try Thronos AI Core. Returns response text or None on failure."""
+    if not settings.thronos_ai_core_url:
+        return None
+    headers = {"X-Admin-Secret": settings.thronos_admin_secret} if settings.thronos_admin_secret else {}
+    payload = {"model": model, "messages": messages, "temperature": temperature}
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(f"{settings.thronos_ai_core_url}/api/ai/chat", json=payload, headers=headers)
+        if resp.status_code == 200:
+            data = resp.json()
+            return data.get("response") or data.get("content") or None
+        logger.warning(f"Thronos AI Core returned {resp.status_code}")
+    except Exception as e:
+        logger.warning(f"Thronos AI Core unreachable, using fallback: {e}")
+    return None
+
+
+async def _chat_via_gentxt(messages: list[dict], model: str, temperature: float) -> str:
+    """Fallback: use the OpenAI-compatible gentxt service."""
+    service = AIHubService()
+    chat_messages = [ChatMessage(role=m["role"], content=m["content"]) for m in messages]
+    req = GenTxtRequest(messages=chat_messages, model=model, temperature=temperature, stream=False)
+    result = await service.gentxt(req)
+    return result.content
+
+
+def _inject_fraud_knowledge(messages: list[ThronosChatMessage]) -> list[dict]:
+    """Prepend fraud detection knowledge to the system message (or insert one)."""
+    fraud_knowledge = get_fraud_knowledge_system_prompt()
+    msgs = [m.model_dump() for m in messages]
+    for msg in msgs:
+        if msg["role"] == "system":
+            msg["content"] = fraud_knowledge + "\n\n" + msg["content"]
+            return msgs
+    msgs.insert(0, {"role": "system", "content": fraud_knowledge})
+    return msgs
 
 
 @router.post("/gentxt")
@@ -166,34 +216,58 @@ async def generate_text(
 
 
 @router.post("/thronos-chat", response_model=ThronosChatResponse)
-async def thronos_chat(request: ThronosChatRequest):
-    """Proxy chat requests to Thronos AI Core."""
-    if not settings.thronos_ai_core_url:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="AI Core is not configured")
+async def thronos_chat(
+    request: ThronosChatRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Authenticated AI assistant chat with credit deduction.
+    Primary: Thronos AI Core. Fallback: gentxt (OpenAI-compatible).
+    Document fraud detection knowledge is automatically injected.
+    Each request costs 10 credits. New users receive 50 free credits.
+    """
+    from routers.credits import deduct_credits, get_or_create_credits, AI_REQUEST_COST
 
-    headers = {"X-Admin-Secret": settings.thronos_admin_secret} if settings.thronos_admin_secret else {}
-    payload = {
-        "model": request.model,
-        "messages": [message.model_dump() for message in request.messages],
-        "temperature": request.temperature,
-    }
+    # Check credit balance (fail fast before expensive AI call)
+    ledger = await get_or_create_credits(db, current_user.id)
+    if ledger.balance < AI_REQUEST_COST:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=f"Insufficient credits ({ledger.balance}/{AI_REQUEST_COST}). Please purchase more credits at /credits.",
+        )
 
-    try:
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(f"{settings.thronos_ai_core_url}/api/ai/chat", json=payload, headers=headers)
-        if response.status_code != status.HTTP_200_OK:
+    # Inject fraud detection knowledge into the conversation
+    enriched_messages = _inject_fraud_knowledge(request.messages)
+
+    # --- Primary: Thronos AI Core ---
+    content = await _chat_via_thronos_core(enriched_messages, request.model, request.temperature)
+
+    # --- Fallback: OpenAI-compatible gentxt ---
+    if content is None:
+        try:
+            content = await _chat_via_gentxt(enriched_messages, request.model, request.temperature)
+        except ValueError as e:
             raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"AI Core returned status {response.status_code}",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="AI service unavailable. Configure APP_AI_BASE_URL and APP_AI_KEY.",
             )
-        data = response.json()
-        content = data.get("response") or data.get("content") or ""
-        return ThronosChatResponse(content=content)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"AI Core request failed: {e}")
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI Core request failed")
+        except Exception as e:
+            logger.error(f"gentxt fallback failed: {e}")
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=extract_error_message(e))
+
+    if not content:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI returned an empty response")
+
+    # Deduct credits after successful response
+    new_balance = await deduct_credits(
+        db=db,
+        user_id=current_user.id,
+        amount=AI_REQUEST_COST,
+        description=f"AI assistant chat ({request.model})",
+    )
+
+    return ThronosChatResponse(content=content, credits_used=AI_REQUEST_COST, credits_remaining=new_balance)
 
 
 @router.post("/genimg", response_model=GenImgResponse)
