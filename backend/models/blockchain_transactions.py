@@ -15,7 +15,7 @@ class BlockchainTransactions(Base):
     __tablename__ = "blockchain_transactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    verification_id = Column(Integer, ForeignKey("verifications.id"), nullable=False)
+    verification_id = Column(Integer, ForeignKey("document_verifications.id"), nullable=False)
     tx_hash = Column(String, unique=True, nullable=False)
     document_hash = Column(String, nullable=False)
     node_url = Column(String, nullable=False)
@@ -25,4 +25,4 @@ class BlockchainTransactions(Base):
     error_message = Column(String, nullable=True)
 
     # Relationships
-    verification = relationship("Verifications", back_populates="blockchain_txs")
+    verification = relationship("DocumentVerifications", back_populates="blockchain_txs")
