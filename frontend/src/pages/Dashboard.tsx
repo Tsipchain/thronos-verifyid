@@ -10,6 +10,7 @@ import AIAssistantModal from '@/components/AIAssistantModal';
 import ChatWidget from '@/components/ChatWidget';
 import LanguageSelector from '@/components/LanguageSelector';
 import ThemeToggle from '@/components/ThemeToggle';
+import { WelcomeModal } from '@/components/WelcomeModal';
 import { 
   Shield, 
   MessageSquare,
@@ -160,6 +161,7 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 dark:from-gray-900 dark:to-blue-900 pb-20">
+      <WelcomeModal />
       <header className="bg-white dark:bg-gray-800 shadow-sm border-b dark:border-gray-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex justify-between items-center">
