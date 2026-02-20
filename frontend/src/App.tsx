@@ -17,6 +17,7 @@ import Verifications from './pages/Verifications';
 import PerformanceDashboard from './pages/PerformanceDashboard';
 import UsersPage from './pages/Users';
 import SettingsPage from './pages/Settings';
+import Credits from './pages/Credits';
 
 const queryClient = new QueryClient();
 
@@ -64,6 +65,7 @@ const App = () => {
             <Route path="/client/*" element={<ClientPortal />} />
             <Route path="/client/upload" element={<FileUpload />} />
             <Route path="/chat" element={<Chat />} />
+            <Route path="/credits" element={<Credits />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
