@@ -57,6 +57,7 @@ const App = () => {
             <Route path="/admin/settings" element={<SettingsPage />} />
             {/* Εδώ είναι η κρίσιμη αλλαγή: Προσθήκη /* για να δουλεύουν τα εσωτερικά μενού */}
             <Route path="/admin/*" element={<Dashboard />} />
+            <Route path="/manager/*" element={<Dashboard />} />
             <Route path="/dashboard/*" element={<DashboardRedirect />} />
             
             <Route path="/agent/*" element={<CallAgentDashboard />} />

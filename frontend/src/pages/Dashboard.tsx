@@ -134,7 +134,7 @@ export default function Dashboard() {
       description: 'User management',
       icon: Users,
       path: '/admin/users',
-      show: rbac.canAccessUsers(),
+      show: rbac.isAdmin(),
       color: 'text-purple-600 dark:text-purple-400',
       bgColor: 'bg-purple-50 dark:bg-purple-900/20'
     },
@@ -255,7 +255,7 @@ export default function Dashboard() {
             </Card>
           )}
           
-          {rbac.canAccessUsers() && (
+          {rbac.isAdmin() && (
             <Card className="dark:bg-gray-800 dark:border-gray-700">
               <CardHeader className="pb-3">
                 <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Users</CardTitle>

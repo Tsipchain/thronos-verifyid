@@ -9,7 +9,7 @@ from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
 from services.thronos_blockchain import thronos_service
 from models.blockchain_transactions import BlockchainTransactions, BlockchainStatus
-from models.verifications import Verifications
+from models.verifications import DocumentVerifications
 from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,7 @@ async def store_verification(
     """Store verification record on Thronos blockchain"""
     try:
         # Get verification details
-        stmt = select(Verifications).where(Verifications.id == request.verification_id)
+        stmt = select(DocumentVerifications).where(DocumentVerifications.id == request.verification_id)
         result = await db.execute(stmt)
         verification = result.scalar_one_or_none()
 
@@ -85,10 +85,10 @@ async def store_verification(
         blockchain_result = thronos_service.store_verification_on_blockchain(
             verification_id=verification.id,
             user_id=verification.user_id,
-            verification_type=verification.verification_type.value,
+            verification_type=verification.document_type.value,
             document_hashes=request.document_hashes,
-            status=verification.status.value,
-            verified_by=verification.reviewed_by
+            status=verification.verification_status.value,
+            verified_by=None
         )
 
         if not blockchain_result["success"]:
@@ -163,7 +163,7 @@ async def get_ai_risk_score(
     """Get AI-powered risk score for verification"""
     try:
         # Get verification details
-        stmt = select(Verifications).where(Verifications.id == verification_id)
+        stmt = select(DocumentVerifications).where(DocumentVerifications.id == verification_id)
         result = await db.execute(stmt)
         verification = result.scalar_one_or_none()
 
@@ -180,7 +180,7 @@ async def get_ai_risk_score(
         # Prepare verification data for AI analysis
         verification_data = {
             "user_id": verification.user_id,
-            "verification_type": verification.verification_type.value,
+            "verification_type": verification.document_type.value,
             "document_count": len(blockchain_txs),
             "document_hashes": [tx.document_hash for tx in blockchain_txs],
             "upload_time": verification.created_at.isoformat(),

@@ -17,8 +17,10 @@ export default function DashboardRedirect() {
       }
 
       const role = user.role;
-      if (role === 'admin' || role === 'manager') {
+      if (role === 'admin') {
         navigate('/admin', { replace: true });
+      } else if (role === 'manager') {
+        navigate('/manager', { replace: true });
       } else if (role === 'agent') {
         navigate('/agent', { replace: true });
       } else {
