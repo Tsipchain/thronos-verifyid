@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Column, ForeignKey, Integer, String, DateTime
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
@@ -20,7 +20,7 @@ class CreditTransaction(Base):
     __tablename__ = "credit_transactions"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(String, nullable=False)
+    user_id = Column(String, ForeignKey("user_credits.user_id"), nullable=False)
     # Positive = credit added (purchase/bonus), negative = credit used
     amount = Column(Integer, nullable=False)
     type = Column(String, nullable=False)  # purchase | ai_usage | bonus
@@ -29,5 +29,4 @@ class CreditTransaction(Base):
     reference_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
 
-    user_credits_ref = relationship("UserCredits", back_populates="transactions", foreign_keys=[user_id],
-                                     primaryjoin="CreditTransaction.user_id == UserCredits.user_id")
+    user_credits_ref = relationship("UserCredits", back_populates="transactions")
