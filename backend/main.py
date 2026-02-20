@@ -180,6 +180,16 @@ def root():
 def health_check():
     return {"status": "healthy"}
 
+@app.get("/api/config")
+def get_runtime_config():
+    """Runtime configuration for frontend - returns current API base URL."""
+    import os
+    api_base_url = os.environ.get("PYTHON_BACKEND_URL", "").strip()
+    if not api_base_url:
+        api_base_url = settings.backend_url
+    return {"API_BASE_URL": api_base_url}
+
+
 
 def run_in_debug_mode(app: FastAPI):
     """Run the FastAPI app in debug mode with proper asyncio handling.

@@ -24,7 +24,7 @@ class VideoCallQueue(Base):
     __tablename__ = "video_call_queue"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    verification_id = Column(Integer, ForeignKey("verifications.id"), nullable=False)
+    verification_id = Column(Integer, ForeignKey("document_verifications.id"), nullable=False)
     customer_id = Column(String, nullable=False)
     agent_id = Column(String, nullable=True)
     priority = Column(SQLEnum(CallPriority), default=CallPriority.NORMAL, nullable=False)
@@ -36,4 +36,4 @@ class VideoCallQueue(Base):
     notes = Column(String, nullable=True)
 
     # Relationships
-    verification = relationship("Verifications", back_populates="video_calls")
+    verification = relationship("DocumentVerifications", back_populates="video_calls")

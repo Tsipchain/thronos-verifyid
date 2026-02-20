@@ -150,3 +150,6 @@ class VerificationStatusResponse(BaseModel):
     digital_signature: Optional[DigitalSignatureResponse] = None
     fraud_analysis: Optional[FraudAnalysisResponse] = None
     verification_complete: bool
+
+    class Config:
+        from_attributes = True

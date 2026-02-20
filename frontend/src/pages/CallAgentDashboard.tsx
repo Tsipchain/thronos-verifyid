@@ -51,6 +51,27 @@ export default function CallAgentDashboard() {
     checkAuth();
   }, []);
 
+
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+
+    const fetchUnread = async () => {
+      try {
+        const response = await apiClient.get<Array<{ unread_count?: number }>>('/api/v1/chat/conversations');
+        const total = response.data.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+        setChatUnreadCount(total);
+      } catch {
+        // ignore polling error
+      }
+    };
+
+    fetchUnread();
+    intervalId = setInterval(fetchUnread, 15000);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [chatOpen]);
+
   const checkAuth = async () => {
     try {
       const user = await authApi.getCurrentUser();
@@ -265,6 +286,15 @@ export default function CallAgentDashboard() {
             Logout
           </Button>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setAiModalOpen(true)}
+          className="gap-2"
+        >
+          <Bot className="h-4 w-4" />
+          AI Assistant
+        </Button>
       </div>
 
       <Tabs defaultValue="pending" className="w-full">

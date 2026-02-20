@@ -31,6 +31,7 @@ interface Conversation {
   participant_count: number;
   unread_count: number;
   last_message_at: string;
+  can_delete?: boolean;
 }
 
 interface Message {
@@ -71,6 +72,7 @@ export default function Chat({ embedded = false }: ChatProps) {
   const [activeTab, setActiveTab] = useState<'conversations' | 'people'>('conversations');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const [currentUser] = useState(getUserFromToken());
 
   useEffect(() => {
     checkPermissions();
@@ -81,6 +83,7 @@ export default function Chat({ embedded = false }: ChatProps) {
   useEffect(() => {
     if (selectedConversation) {
       loadMessages(selectedConversation.id);
+      markConversationAsRead(selectedConversation.id);
       connectWebSocket(selectedConversation.id);
     }
     return () => {
@@ -94,13 +97,33 @@ export default function Chat({ embedded = false }: ChatProps) {
     scrollToBottom();
   }, [messages]);
 
+  const selectedConversationTitle = useMemo(() => {
+    if (!selectedConversation) return '';
+
+    if (selectedConversation.conversation_type === 'group') {
+      return selectedConversation.name || 'Team Group';
+    }
+
+    const otherMessage = messages.find((msg) => msg.user_id !== currentUser.id);
+    if (otherMessage?.username) {
+      return otherMessage.username;
+    }
+
+    const contactMatch = directContacts.find((contact) => contact.email === selectedConversation.name);
+    if (contactMatch) {
+      return contactMatch.name || contactMatch.email;
+    }
+
+    return selectedConversation.name || 'Private Chat';
+  }, [selectedConversation, messages, currentUser.id, directContacts]);
+
   const checkPermissions = async () => {
     await rbac.initialize();
     if (!rbac.canAccessChat()) {
       toast({
         title: 'Access Denied',
         description: 'You do not have permission to access chat',
-        variant: 'destructive'
+        variant: 'destructive',
       });
       navigate('/admin');
     }
@@ -120,11 +143,7 @@ export default function Chat({ embedded = false }: ChatProps) {
       setLoading(false);
     } catch (error) {
       const detail = (error as { data?: { detail?: string } })?.data?.detail || 'Failed to load conversations';
-      toast({
-        title: 'Error',
-        description: detail,
-        variant: 'destructive'
-      });
+      toast({ title: 'Error', description: detail, variant: 'destructive' });
       setLoading(false);
     }
   };
@@ -153,12 +172,8 @@ export default function Chat({ embedded = false }: ChatProps) {
         `/api/v1/chat/conversations/${conversationId}/messages`
       );
       setMessages(response.data);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to load messages',
-        variant: 'destructive'
-      });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to load messages', variant: 'destructive' });
     }
   };
 
@@ -172,14 +187,28 @@ export default function Chat({ embedded = false }: ChatProps) {
     wsUrl.searchParams.set('token', token);
     const ws = new WebSocket(wsUrl.toString());
 
-    ws.onopen = () => {
-      console.log('WebSocket connected');
-    };
+  const connectWebSocket = (conversationId: number) => {
+    const token = getAuthToken() || 'demo-token';
+    const apiBaseUrl = getAPIBaseURL();
+    const wsBaseUrl = apiBaseUrl.startsWith('https') ? apiBaseUrl.replace('https', 'wss') : apiBaseUrl.replace('http', 'ws');
+    const wsUrl = new URL(`/api/v1/chat/ws/${conversationId}`, wsBaseUrl);
+    wsUrl.searchParams.set('token', token);
+    const ws = new WebSocket(wsUrl.toString());
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'message') {
-        setMessages(prev => [...prev, data.message]);
+        const incomingConversationId = data.message?.conversation_id;
+        if (incomingConversationId === selectedConversation?.id) {
+          setMessages((prev) => [...prev, data.message]);
+          markConversationAsRead(selectedConversation.id);
+        } else if (incomingConversationId) {
+          setConversations((prev) => prev.map((conv) => (
+            conv.id === incomingConversationId
+              ? { ...conv, unread_count: (conv.unread_count || 0) + 1 }
+              : conv
+          )));
+        }
       }
     };
 
@@ -200,14 +229,88 @@ export default function Chat({ embedded = false }: ChatProps) {
         content: newMessage
       });
       setNewMessage('');
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to send message',
-        variant: 'destructive'
-      });
+    } catch {
+      toast({ title: 'Error', description: 'Failed to send message', variant: 'destructive' });
     } finally {
       setSending(false);
+    }
+  };
+
+  const openDirectChat = async (recipientUserId: string) => {
+    try {
+      const response = await apiClient.post<Conversation>('/api/v1/chat/direct', {
+        recipient_user_id: recipientUserId,
+        content: '',
+      });
+
+      const existing = conversations.find((conv) => conv.id === response.data.id);
+      if (!existing) {
+        setConversations((prev) => [response.data, ...prev]);
+      }
+      setSelectedConversation(response.data);
+      setActiveTab('conversations');
+      await loadConversations();
+    } catch {
+      toast({ title: 'Error', description: 'Failed to open direct conversation', variant: 'destructive' });
+    }
+  };
+
+  const handleDeleteConversation = async (conversation: Conversation) => {
+    try {
+      await apiClient.delete(`/api/v1/chat/conversations/${conversation.id}`);
+      const updated = conversations.filter((conv) => conv.id !== conversation.id);
+      setConversations(updated);
+      if (selectedConversation?.id === conversation.id) {
+        setSelectedConversation(updated[0] || null);
+        setMessages([]);
+      }
+      toast({ title: 'Deleted', description: 'Conversation deleted successfully.' });
+    } catch (error) {
+      const detail = (error as { data?: { detail?: string } })?.data?.detail || 'Cannot delete this conversation';
+      toast({ title: 'Error', description: detail, variant: 'destructive' });
+    }
+  };
+
+  const toggleUserSelection = (userId: string) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+  };
+
+  const handleCreateGroup = async () => {
+    if (!groupName.trim()) {
+      toast({ title: 'Missing name', description: 'Please provide a group name.', variant: 'destructive' });
+      return;
+    }
+
+    if (selectedUserIds.size === 0) {
+      toast({ title: 'No participants', description: 'Select at least one participant.', variant: 'destructive' });
+      return;
+    }
+
+    try {
+      setCreatingGroup(true);
+      const response = await apiClient.post<Conversation>('/api/v1/chat/conversations', {
+        conversation_type: 'group',
+        name: groupName.trim(),
+        description: '',
+        participant_ids: Array.from(selectedUserIds),
+      });
+      setConversations((prev) => [response.data, ...prev]);
+      setSelectedConversation(response.data);
+      setGroupName('');
+      setSelectedUserIds(new Set());
+      setIsGroupModalOpen(false);
+    } catch {
+      toast({ title: 'Error', description: 'Failed to create conversation', variant: 'destructive' });
+    } finally {
+      setCreatingGroup(false);
     }
   };
 
@@ -298,10 +401,10 @@ export default function Chat({ embedded = false }: ChatProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading chat...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
+          <p className="text-slate-600">Loading chat...</p>
         </div>
       </div>
     );
@@ -441,6 +544,21 @@ export default function Chat({ embedded = false }: ChatProps) {
                           </Badge>
                         )}
                       </div>
+                      <div className="flex items-center gap-2">
+                        {conv.unread_count > 0 && <Badge>{conv.unread_count}</Badge>}
+                        {conv.can_delete && (
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteConversation(conv);
+                            }}
+                            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                            title="Delete conversation"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </span>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -478,46 +596,50 @@ export default function Chat({ embedded = false }: ChatProps) {
             <>
               <div className="bg-white border-b px-6 py-4">
                 <div className="flex items-center justify-between">
-                  <div>
-                    <h2 className="font-semibold text-lg">
-                      {selectedConversation.name || 'Direct Message'}
-                    </h2>
-                    <p className="text-sm text-gray-500">
-                      {selectedConversation.participant_count} members
-                    </p>
+                  <div className="flex items-center gap-3">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback className="bg-indigo-100 text-indigo-700 text-sm">
+                        {selectedConversation.conversation_type === 'group' ? <Users className="h-4 w-4" /> : getInitials(selectedConversationTitle)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <h2 className="font-semibold text-lg text-slate-900">{selectedConversationTitle}</h2>
+                      <p className="text-xs text-slate-500">
+                        {selectedConversation.conversation_type === 'group' ? `${selectedConversation.participant_count} members in group` : 'Private conversation'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
                     <Circle className="h-2 w-2 fill-green-500 text-green-500" />
-                    <span>Online</span>
+                    <span>Connected</span>
                   </div>
                 </div>
               </div>
 
               <ScrollArea className="flex-1 p-6">
                 <div className="space-y-4">
-                  {messages.map((msg) => (
-                    <div key={msg.id} className="flex gap-3">
-                      <Avatar className="h-8 w-8 mt-1">
-                        <AvatarFallback className="bg-gray-200 text-gray-600 text-xs">
-                          {msg.username[0]?.toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1">
-                        <div className="flex items-baseline gap-2 mb-1">
-                          <span className="font-medium text-sm">{msg.username}</span>
-                          <span className="text-xs text-gray-500">
-                            {new Date(msg.created_at).toLocaleTimeString()}
-                          </span>
-                          {msg.is_edited && (
-                            <span className="text-xs text-gray-400">(edited)</span>
-                          )}
+                  {messages.map((msg) => {
+                    const mine = msg.user_id === currentUser.id;
+                    return (
+                      <div key={msg.id} className={`flex gap-3 ${mine ? 'justify-end' : ''}`}>
+                        {!mine && (
+                          <Avatar className="h-8 w-8 mt-1">
+                            <AvatarFallback className="bg-slate-200 text-slate-700 text-xs">{getInitials(msg.username)}</AvatarFallback>
+                          </Avatar>
+                        )}
+                        <div className={`max-w-[75%] ${mine ? 'items-end' : 'items-start'} flex flex-col`}>
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <span className="font-medium text-xs text-slate-600">{mine ? 'You' : msg.username}</span>
+                            <span className="text-[11px] text-slate-400">{new Date(msg.created_at).toLocaleTimeString()}</span>
+                            {msg.is_edited && <span className="text-[11px] text-slate-400">(edited)</span>}
+                          </div>
+                          <div className={`rounded-2xl px-4 py-2 text-sm shadow-sm ${mine ? 'bg-blue-600 text-white' : 'bg-white text-slate-800 border'}`}>
+                            {msg.content}
+                          </div>
                         </div>
-                        <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                          {msg.content}
-                        </p>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   <div ref={messagesEndRef} />
                 </div>
               </ScrollArea>
@@ -526,7 +648,7 @@ export default function Chat({ embedded = false }: ChatProps) {
                 <div className="bg-white border-t p-4">
                   <div className="flex gap-2">
                     <Input
-                      placeholder="Type a message..."
+                      placeholder={`Message ${selectedConversationTitle}...`}
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyDown={handleKeyDown}
@@ -538,12 +660,17 @@ export default function Chat({ embedded = false }: ChatProps) {
                     </Button>
                   </div>
                 </div>
+              ) : (
+                <div className="bg-white border-t px-4 py-3 flex items-center gap-2 text-sm text-slate-500">
+                  <Lock className="h-4 w-4" />
+                  You do not have permission to send messages in chat.
+                </div>
               )}
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-500">
+            <div className="flex-1 flex items-center justify-center text-slate-500">
               <div className="text-center">
-                <MessageSquare className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                <MessageSquare className="h-12 w-12 mx-auto mb-4 text-slate-400" />
                 <p>Select a conversation to start chatting</p>
               </div>
             </div>

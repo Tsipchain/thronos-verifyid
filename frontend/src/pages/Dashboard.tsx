@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { rbac } from '@/lib/rbac';
 import { authApi } from '@/lib/auth';
+import { apiClient } from '@/lib/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -40,6 +41,28 @@ export default function Dashboard() {
   useEffect(() => {
     checkAuth();
   }, []);
+
+
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | undefined;
+
+    const fetchUnread = async () => {
+      if (!rbac.canAccessChat()) return;
+      try {
+        const response = await apiClient.get<Array<{ unread_count?: number }>>('/api/v1/chat/conversations');
+        const total = response.data.reduce((sum, conv) => sum + (conv.unread_count || 0), 0);
+        setChatUnreadCount(total);
+      } catch {
+        // ignore silent polling errors
+      }
+    };
+
+    fetchUnread();
+    intervalId = setInterval(fetchUnread, 15000);
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [chatOpen]);
 
   const checkAuth = async () => {
     try {

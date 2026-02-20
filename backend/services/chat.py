@@ -430,6 +430,38 @@ class ChatService:
         return False
     
     @staticmethod
+    async def delete_conversation_for_user(
+        db: AsyncSession,
+        conversation_id: int,
+        user_id: str,
+        can_manage_chat: bool = False,
+    ) -> bool:
+        """Delete (deactivate) a conversation if allowed.
+
+        - Admin/IT (`can_manage_chat`) can delete any conversation.
+        - Other users can delete only conversations they created.
+        """
+        result = await db.execute(
+            select(Conversations).where(
+                and_(
+                    Conversations.id == conversation_id,
+                    Conversations.is_active == True,
+                )
+            )
+        )
+        conversation = result.scalar_one_or_none()
+        if not conversation:
+            return False
+
+        if not can_manage_chat and conversation.user_id != user_id:
+            return False
+
+        conversation.is_active = False
+        conversation.updated_at = datetime.now()
+        await db.commit()
+        return True
+
+    @staticmethod
     async def edit_message(
         db: AsyncSession,
         message_id: int,
