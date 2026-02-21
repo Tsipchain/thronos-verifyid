@@ -28,11 +28,14 @@ class StorageService:
     """Service for handling file upload and display with ObjectStorage service integration."""
 
     def __init__(self):
-        if not settings.oss_service_url or not settings.oss_api_key:
+        oss_service_url = getattr(settings, 'oss_service_url', None)
+        oss_api_key = getattr(settings, 'oss_api_key', None)
+        if not oss_service_url or not oss_api_key:
             raise ValueError("OSS service not configured. Set OSS_SERVICE_URL and OSS_API_KEY.")
 
+        self.oss_service_url = oss_service_url
         self.headers = {
-            "Authorization": f"Bearer {settings.oss_api_key}",
+            "Authorization": f"Bearer {oss_api_key}",
             "Content-Type": "application/json",
         }
 
@@ -189,7 +192,7 @@ class StorageService:
         payload: Optional[dict] = None,
     ) -> Union[dict, list]:
         """统一的 OSS 服务请求方法"""
-        url = urljoin(settings.oss_service_url, endpoint)
+        url = urljoin(self.oss_service_url, endpoint)
 
         try:
             async with httpx.AsyncClient(timeout=120.0) as client:
@@ -216,4 +219,4 @@ class StorageService:
             raise ValueError(error_msg)
         except Exception as e:
             logger.error(f"Failed to call ObjectStorage service: {e}")
-            raise
+            raise ValueError(f"ObjectStorage service unreachable: {e}") from e

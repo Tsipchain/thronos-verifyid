@@ -134,13 +134,21 @@ async def upload_file(request: FileUpDownRequest, _current_user: UserResponse = 
     """
     try:
         service = StorageService()
+    except ValueError as e:
+        logger.error(f"OSS not configured: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="File storage service is not configured. Contact the administrator.",
+        )
+
+    try:
         return await service.create_upload_url(request)
     except ValueError as e:
         logger.error(f"Invalid upload request: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to generate upload URL: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"{e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/download-url", response_model=FileUpDownResponse)
@@ -150,10 +158,18 @@ async def download_file(request: FileUpDownRequest, _current_user: UserResponse 
     """
     try:
         service = StorageService()
+    except ValueError as e:
+        logger.error(f"OSS not configured: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="File storage service is not configured. Contact the administrator.",
+        )
+
+    try:
         return await service.create_download_url(request)
     except ValueError as e:
         logger.error(f"Invalid download request: {e}")
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"Failed to generate download URL: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"{e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
