@@ -7,7 +7,6 @@ from sqlalchemy.orm import selectinload
 
 from models.video_call_queue import VideoCallQueue, CallStatus, CallPriority
 from models.agent_availability import AgentAvailability, AgentStatus
-from models.verifications import Verifications
 
 logger = logging.getLogger(__name__)
 
