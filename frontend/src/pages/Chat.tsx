@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
 import { apiClient } from '@/lib/api';
 import { getAPIBaseURL } from '@/lib/config';
 import { getAuthToken } from '@/lib/auth';
@@ -19,6 +19,8 @@ import {
   ArrowLeft,
   Circle,
   UserCircle2,
+  Trash2,
+  Lock,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
@@ -52,6 +54,31 @@ interface ChatUser {
 
 interface ChatProps {
   embedded?: boolean;
+}
+
+// Helper functions
+function getUserFromToken() {
+  try {
+    const token = getAuthToken();
+    if (!token) return { id: 'unknown', email: 'guest' };
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return { id: payload.sub || payload.user_id, email: payload.email || 'user' };
+  } catch {
+    return { id: 'unknown', email: 'guest' };
+  }
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function markConversationAsRead(conversationId: number) {
+  apiClient.post(`/api/v1/chat/conversations/${conversationId}/read`).catch(console.error);
 }
 
 export default function Chat({ embedded = false }: ChatProps) {
@@ -187,14 +214,6 @@ export default function Chat({ embedded = false }: ChatProps) {
     wsUrl.searchParams.set('token', token);
     const ws = new WebSocket(wsUrl.toString());
 
-  const connectWebSocket = (conversationId: number) => {
-    const token = getAuthToken() || 'demo-token';
-    const apiBaseUrl = getAPIBaseURL();
-    const wsBaseUrl = apiBaseUrl.startsWith('https') ? apiBaseUrl.replace('https', 'wss') : apiBaseUrl.replace('http', 'ws');
-    const wsUrl = new URL(`/api/v1/chat/ws/${conversationId}`, wsBaseUrl);
-    wsUrl.searchParams.set('token', token);
-    const ws = new WebSocket(wsUrl.toString());
-
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'message') {
@@ -309,84 +328,6 @@ export default function Chat({ embedded = false }: ChatProps) {
       setIsGroupModalOpen(false);
     } catch {
       toast({ title: 'Error', description: 'Failed to create conversation', variant: 'destructive' });
-    } finally {
-      setCreatingGroup(false);
-    }
-  };
-
-  const openDirectChat = async (recipientUserId: string) => {
-    try {
-      const response = await apiClient.post<Conversation>('/api/v1/chat/direct', {
-        recipient_user_id: recipientUserId,
-        content: 'Started a private chat'
-      });
-
-      const existing = conversations.find((conv) => conv.id === response.data.id);
-      if (!existing) {
-        setConversations((prev) => [response.data, ...prev]);
-      }
-      setSelectedConversation(response.data);
-      setActiveTab('conversations');
-      await loadConversations();
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to open direct conversation',
-        variant: 'destructive'
-      });
-    }
-  };
-
-  const toggleUserSelection = (userId: string) => {
-    setSelectedUserIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(userId)) {
-        next.delete(userId);
-      } else {
-        next.add(userId);
-      }
-      return next;
-    });
-  };
-
-  const handleCreateGroup = async () => {
-    if (!groupName.trim()) {
-      toast({
-        title: 'Missing name',
-        description: 'Please provide a group name.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    if (selectedUserIds.size === 0) {
-      toast({
-        title: 'No participants',
-        description: 'Select at least one participant.',
-        variant: 'destructive'
-      });
-      return;
-    }
-
-    try {
-      setCreatingGroup(true);
-      const response = await apiClient.post<Conversation>('/api/v1/chat/conversations', {
-        conversation_type: 'group',
-        name: groupName.trim(),
-        description: '',
-        participant_ids: Array.from(selectedUserIds)
-      });
-      setConversations((prev) => [response.data, ...prev]);
-      setSelectedConversation(response.data);
-      setGroupName('');
-      setSelectedUserIds(new Set());
-      setIsGroupModalOpen(false);
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: 'Failed to create conversation',
-        variant: 'destructive'
-      });
     } finally {
       setCreatingGroup(false);
     }
@@ -538,26 +479,25 @@ export default function Chat({ embedded = false }: ChatProps) {
                             </p>
                           </div>
                         </div>
-                        {conv.unread_count > 0 && (
-                          <Badge variant="default" className="ml-2">
-                            {conv.unread_count}
-                          </Badge>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {conv.unread_count > 0 && <Badge>{conv.unread_count}</Badge>}
-                        {conv.can_delete && (
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteConversation(conv);
-                            }}
-                            className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
-                            title="Delete conversation"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {conv.unread_count > 0 && (
+                            <Badge variant="default" className="ml-2">
+                              {conv.unread_count}
+                            </Badge>
+                          )}
+                          {conv.can_delete && (
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteConversation(conv);
+                              }}
+                              className="inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-md text-slate-400 hover:bg-red-50 hover:text-red-600"
+                              title="Delete conversation"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -644,7 +584,7 @@ export default function Chat({ embedded = false }: ChatProps) {
                 </div>
               </ScrollArea>
 
-              {rbac.canSendMessages() && (
+              {rbac.canSendMessages() ? (
                 <div className="bg-white border-t p-4">
                   <div className="flex gap-2">
                     <Input
