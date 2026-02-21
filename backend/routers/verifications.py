@@ -1,26 +1,146 @@
+import logging
+from datetime import datetime
+from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from dependencies.auth import get_current_user, require_manager_or_admin
 from dependencies.database import get_db
-from dependencies.auth import get_current_user
+from models.verifications import DocumentVerifications, VerificationStatus
 from schemas.auth import UserResponse
 from schemas.verifications import (
-    DocumentVerificationCreate,
-    DocumentVerificationResponse,
     AgeVerificationCreate,
     AgeVerificationResponse,
-    KYCFormCreate,
-    KYCFormResponse,
-    VideoVerificationCreate,
-    VideoVerificationResponse,
     DigitalSignatureCreate,
     DigitalSignatureResponse,
+    DocumentVerificationCreate,
+    DocumentVerificationResponse,
     FraudAnalysisCreate,
     FraudAnalysisResponse,
-    VerificationStatusResponse
+    KYCFormCreate,
+    KYCFormResponse,
+    VerificationStatusResponse,
+    VideoVerificationCreate,
+    VideoVerificationResponse,
 )
 from services.verifications import VerificationService
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1/verifications", tags=["verifications"])
+
+
+# ── Manager / admin list + finalize ──────────────────────────────────────────
+
+class VerificationListItem(BaseModel):
+    id: int
+    user_id: str
+    document_type: str
+    verification_status: str
+    fraud_score: int
+    risk_level: Optional[str]
+    created_at: datetime
+    verified_at: Optional[datetime]
+    blockchain_tx_hash: Optional[str]
+
+    class Config:
+        from_attributes = True
+
+
+class ManagerFinalizeRequest(BaseModel):
+    decision: str = "completed"  # "completed" | "rejected"
+    notes: Optional[str] = None
+
+
+@router.get("/list", response_model=List[VerificationListItem])
+async def list_all_verifications(
+    status: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    current_user: UserResponse = Depends(require_manager_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all document verifications (manager/admin only).
+
+    Optionally filter by status: pending, in_review, approved, rejected, completed.
+    """
+    stmt = select(DocumentVerifications).order_by(DocumentVerifications.created_at.desc())
+    if status:
+        try:
+            s = VerificationStatus(status)
+            stmt = stmt.where(DocumentVerifications.verification_status == s)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status value: {status}")
+    stmt = stmt.offset(offset).limit(limit)
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+    return [
+        VerificationListItem(
+            id=r.id,
+            user_id=r.user_id,
+            document_type=r.document_type.value,
+            verification_status=r.verification_status.value,
+            fraud_score=r.fraud_score,
+            risk_level=r.risk_level,
+            created_at=r.created_at,
+            verified_at=r.verified_at,
+            blockchain_tx_hash=r.blockchain_tx_hash,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/{verification_id}/manager-finalize")
+async def manager_finalize(
+    verification_id: int,
+    body: ManagerFinalizeRequest,
+    current_user: UserResponse = Depends(require_manager_or_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Manager final seal (κλείδωμα).
+
+    Moves an agent-approved verification to COMPLETED status (or back to
+    REJECTED if the manager overrides).  This is the definitive, immutable
+    lock that closes the verification event.
+    """
+    stmt = select(DocumentVerifications).where(DocumentVerifications.id == verification_id)
+    result = await db.execute(stmt)
+    verification = result.scalar_one_or_none()
+
+    if not verification:
+        raise HTTPException(status_code=404, detail="Verification not found")
+
+    allowed_from = {VerificationStatus.APPROVED, VerificationStatus.IN_REVIEW}
+    if verification.verification_status not in allowed_from:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot finalize a verification in '{verification.verification_status.value}' status. "
+                   "Only agent-approved or in-review verifications can be finalized.",
+        )
+
+    if body.decision == "completed":
+        verification.verification_status = VerificationStatus.COMPLETED
+    else:
+        verification.verification_status = VerificationStatus.REJECTED
+
+    verification.verified_at = datetime.now()
+    await db.commit()
+    await db.refresh(verification)
+
+    logger.info(
+        "Manager %s finalized verification %s → %s",
+        current_user.id, verification_id, verification.verification_status.value,
+    )
+
+    return {
+        "id": verification.id,
+        "verification_status": verification.verification_status.value,
+        "verified_at": verification.verified_at.isoformat(),
+        "finalized_by": current_user.id,
+    }
 
 
 @router.post("/document", response_model=DocumentVerificationResponse)

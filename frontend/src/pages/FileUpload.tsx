@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '@/lib/auth';
 import { apiClient } from '@/lib/api';
@@ -6,263 +6,174 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { 
-  Upload, 
-  X, 
-  FileText, 
-  Image as ImageIcon, 
-  CheckCircle, 
-  AlertCircle,
+import {
+  Upload,
+  X,
+  FileText,
+  Image as ImageIcon,
   ArrowLeft,
-  Download,
-  Eye
+  Clock,
+  Users,
+  CheckCircle,
+  XCircle,
+  Loader2,
+  Shield,
+  ExternalLink,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDropzone } from 'react-dropzone';
 
-interface UploadedFile {
-  id: string;
-  name: string;
-  size: number;
-  type: string;
-  object_key: string;
-  bucket_name: string;
-  upload_date: string;
-  thumbnail_url?: string;
-  status: 'uploading' | 'success' | 'error';
-  progress: number;
-  error_message?: string;
+interface QueueStatus {
+  in_queue: boolean;
+  queue_id: number | null;
+  queue_position: number;
+  available_agents: number;
+  status: string;
+  verification_status?: string | null;
+  blockchain_tx_hash?: string | null;
+}
+
+interface UploadResult {
+  verification_id: number;
+  queue_id: number;
+  queue_position: number;
+  available_agents: number;
+  status: string;
+  message: string;
 }
 
 const ALLOWED_TYPES = {
   'image/jpeg': ['.jpg', '.jpeg'],
   'image/png': ['.png'],
   'image/gif': ['.gif'],
+  'image/webp': ['.webp'],
   'application/pdf': ['.pdf'],
-  'application/msword': ['.doc'],
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx']
 };
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
-const BUCKET_NAME = 'verification-documents';
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+const DOCUMENT_TYPES = [
+  { value: 'national_id', label: 'National ID Card' },
+  { value: 'passport', label: 'Passport' },
+  { value: 'drivers_license', label: "Driver's License" },
+  { value: 'residence_permit', label: 'Residence Permit' },
+];
 
 export default function FileUpload() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [files, setFiles] = useState<UploadedFile[]>([]);
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [documentType, setDocumentType] = useState('national_id');
   const [uploading, setUploading] = useState(false);
+  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const ensureAuth = async () => {
       const user = await authApi.getCurrentUser();
-      if (!user) {
-        navigate('/login');
-      }
+      if (!user) navigate('/login');
     };
-
     ensureAuth();
+    checkExistingQueue();
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
   }, [navigate]);
 
-  const validateFile = (file: File): string | null => {
-    // Check file type
-    if (!Object.keys(ALLOWED_TYPES).includes(file.type)) {
-      return `File type ${file.type} is not allowed. Allowed types: images (jpg, png, gif), PDF, Word documents`;
-    }
-
-    // Check file size
-    if (file.size > MAX_FILE_SIZE) {
-      return `File size ${(file.size / 1024 / 1024).toFixed(2)}MB exceeds maximum allowed size of ${MAX_FILE_SIZE / 1024 / 1024}MB`;
-    }
-
-    return null;
-  };
-
-  const generateThumbnail = async (file: File): Promise<string | undefined> => {
-    if (!file.type.startsWith('image/')) return undefined;
-
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const img = new Image();
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          const maxSize = 200;
-          
-          let width = img.width;
-          let height = img.height;
-          
-          if (width > height) {
-            if (width > maxSize) {
-              height *= maxSize / width;
-              width = maxSize;
-            }
-          } else {
-            if (height > maxSize) {
-              width *= maxSize / height;
-              height = maxSize;
-            }
-          }
-          
-          canvas.width = width;
-          canvas.height = height;
-          ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.7));
-        };
-        img.src = e.target?.result as string;
-      };
-      reader.readAsDataURL(file);
-    });
-  };
-
-  const uploadFile = async (file: File) => {
-    const fileId = `${Date.now()}-${file.name}`;
-    const objectKey = `documents/${Date.now()}-${file.name}`;
-
-    // Add file to list with uploading status
-    const newFile: UploadedFile = {
-      id: fileId,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      object_key: objectKey,
-      bucket_name: BUCKET_NAME,
-      upload_date: new Date().toISOString(),
-      status: 'uploading',
-      progress: 0
-    };
-
-    setFiles(prev => [...prev, newFile]);
-
+  const checkExistingQueue = async () => {
     try {
-      // Generate thumbnail for images
-      if (file.type.startsWith('image/')) {
-        const thumbnail = await generateThumbnail(file);
-        setFiles(prev => prev.map(f => 
-          f.id === fileId ? { ...f, thumbnail_url: thumbnail } : f
-        ));
+      const response = await apiClient.get<QueueStatus>('/api/v1/client/queue-status');
+      if (response.data.in_queue) {
+        setQueueStatus(response.data);
+        startPolling();
       }
-
-      // Update progress to 30%
-      setFiles(prev => prev.map(f => 
-        f.id === fileId ? { ...f, progress: 30 } : f
-      ));
-
-      // Step 1: Get upload URL from backend
-      const urlResponse = await apiClient.post('/api/v1/storage/upload-url', {
-        bucket_name: BUCKET_NAME,
-        object_key: objectKey,
-      });
-
-      const uploadUrl = urlResponse.data.upload_url;
-
-      // Update progress to 50%
-      setFiles(prev => prev.map(f => 
-        f.id === fileId ? { ...f, progress: 50 } : f
-      ));
-
-      // Step 2: Upload file to S3 using presigned URL
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type
-        }
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error('Failed to upload file to storage');
-      }
-
-      // Update progress to 100%
-      setFiles(prev => prev.map(f => 
-        f.id === fileId ? { ...f, progress: 100, status: 'success' } : f
-      ));
-
-      toast({
-        title: 'Upload Successful',
-        description: `${file.name} has been uploaded successfully`
-      });
-
-    } catch (error) {
-      const errorMessage = (error as { data?: { detail?: string }; message?: string })?.data?.detail 
-        || (error as { message?: string })?.message 
-        || 'Upload failed';
-
-      setFiles(prev => prev.map(f => 
-        f.id === fileId ? { 
-          ...f, 
-          status: 'error', 
-          progress: 0,
-          error_message: errorMessage 
-        } : f
-      ));
-
-      toast({
-        title: 'Upload Failed',
-        description: errorMessage,
-        variant: 'destructive'
-      });
+    } catch {
+      // not in queue — proceed normally
     }
   };
 
-  const onDrop = useCallback(async (acceptedFiles: File[]) => {
-    setUploading(true);
-
-    // Validate all files first
-    const validFiles: File[] = [];
-    for (const file of acceptedFiles) {
-      const error = validateFile(file);
-      if (error) {
-        toast({
-          title: 'Invalid File',
-          description: error,
-          variant: 'destructive'
-        });
-      } else {
-        validFiles.push(file);
+  const startPolling = () => {
+    if (pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const response = await apiClient.get<QueueStatus>('/api/v1/client/queue-status');
+        setQueueStatus(response.data);
+        if (!response.data.in_queue) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+      } catch {
+        // ignore poll errors
       }
-    }
+    }, 10000);
+  };
 
-    // Upload valid files
-    await Promise.all(validFiles.map(file => uploadFile(file)));
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      const file = acceptedFiles[0];
+      if (!file) return;
 
-    setUploading(false);
-  }, []);
+      if (file.size > MAX_FILE_SIZE) {
+        toast({ title: 'File too large', description: 'Maximum size is 10 MB.', variant: 'destructive' });
+        return;
+      }
+
+      setSelectedFile(file);
+
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onloadend = () => setPreview(reader.result as string);
+        reader.readAsDataURL(file);
+      } else {
+        setPreview(null);
+      }
+    },
+    [toast],
+  );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: ALLOWED_TYPES,
     maxSize: MAX_FILE_SIZE,
-    multiple: true
+    multiple: false,
   });
 
-  const removeFile = (fileId: string) => {
-    setFiles(prev => prev.filter(f => f.id !== fileId));
-  };
-
-  const downloadFile = async (file: UploadedFile) => {
-    try {
-      const response = await apiClient.post('/api/v1/storage/download-url', {
-        bucket_name: file.bucket_name,
-        object_key: file.object_key,
-      });
-
-      const downloadUrl = response.data.download_url;
-      window.open(downloadUrl, '_blank');
-    } catch (error) {
-      toast({
-        title: 'Download Failed',
-        description: 'Failed to generate download link',
-        variant: 'destructive'
-      });
+  const handleSubmit = async () => {
+    if (!selectedFile) {
+      toast({ title: 'No file selected', description: 'Please choose a document first.', variant: 'destructive' });
+      return;
     }
-  };
 
-  const getFileIcon = (type: string) => {
-    if (type.startsWith('image/')) return ImageIcon;
-    return FileText;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      formData.append('document_type', documentType);
+      formData.append('priority', 'normal');
+
+      const response = await apiClient.post<UploadResult>('/api/v1/client/upload-document', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setQueueStatus({
+        in_queue: true,
+        queue_id: response.data.queue_id,
+        queue_position: response.data.queue_position,
+        available_agents: response.data.available_agents,
+        status: 'pending',
+      });
+
+      toast({ title: 'Document submitted', description: response.data.message });
+      startPolling();
+    } catch (error: any) {
+      const detail = error?.response?.data?.detail || error?.message || 'Upload failed';
+      toast({ title: 'Upload failed', description: detail, variant: 'destructive' });
+    } finally {
+      setUploading(false);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -270,173 +181,317 @@ export default function FileUpload() {
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
+
+  // ── Verification complete screen ───────────────────────────────────────────
+  if (queueStatus?.status === 'completed') {
+    const approved = queueStatus.verification_status === 'approved';
+    const txHash = queueStatus.blockchain_tx_hash;
+    const txPending = !txHash;
+
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg text-center shadow-lg">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div
+                className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                  approved ? 'bg-green-100' : 'bg-red-100'
+                }`}
+              >
+                {approved ? (
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                ) : (
+                  <XCircle className="h-8 w-8 text-red-600" />
+                )}
+              </div>
+            </div>
+            <CardTitle className={`text-2xl ${approved ? 'text-green-700' : 'text-red-700'}`}>
+              {approved ? 'Identity Verified' : 'Verification Rejected'}
+            </CardTitle>
+            <CardDescription>
+              {approved
+                ? 'Your identity has been confirmed by a verified agent.'
+                : 'Your document could not be verified. Please contact support or upload a different document.'}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            {/* Blockchain proof */}
+            <div className="bg-gray-50 border rounded-lg p-4 text-left space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Shield className="h-4 w-4 text-blue-600" />
+                Thronos Blockchain Proof
+              </div>
+              {txPending ? (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Anchoring to blockchain via ACICS miners…
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-500 font-mono break-all">{txHash}</p>
+                  <Badge variant="default" className="bg-blue-600 text-xs">
+                    Confirmed on Thronos
+                  </Badge>
+                </>
+              )}
+            </div>
+
+            <Button className="w-full" onClick={() => navigate('/client')}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Go to My Portal
+            </Button>
+
+            {!approved && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  if (pollRef.current) clearInterval(pollRef.current);
+                  pollRef.current = null;
+                  setQueueStatus(null);
+                  setSelectedFile(null);
+                  setPreview(null);
+                }}
+              >
+                Upload a Different Document
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Queue waiting screen ───────────────────────────────────────────────────
+  if (queueStatus?.in_queue || queueStatus?.status === 'pending' || queueStatus?.status === 'assigned' || queueStatus?.status === 'in_progress') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg text-center shadow-lg">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                <Clock className="h-8 w-8 text-blue-600 animate-pulse" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl">You are in the queue</CardTitle>
+            <CardDescription>
+              Your documents have been submitted. An agent will start a video call with you shortly to
+              complete the verification.
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            <div className="bg-blue-50 rounded-lg p-6 space-y-3">
+              <div className="text-5xl font-bold text-blue-600">#{queueStatus.queue_position}</div>
+              <div className="text-sm text-gray-600">Your position in the queue</div>
+              <Progress
+                value={Math.max(5, 100 - (queueStatus.queue_position - 1) * 20)}
+                className="h-2"
+              />
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <Users className="h-4 w-4 text-green-600" />
+              {queueStatus.available_agents > 0 ? (
+                <span className="text-green-700 font-medium">
+                  {queueStatus.available_agents} agent{queueStatus.available_agents !== 1 ? 's' : ''}{' '}
+                  available
+                </span>
+              ) : (
+                <span className="text-gray-500">No agents online right now — checking every 10 s</span>
+              )}
+            </div>
+
+            <Badge variant="secondary" className="text-sm px-4 py-1">
+              <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+              Waiting for agent
+            </Badge>
+
+            <p className="text-xs text-gray-400">
+              Keep this page open. It updates automatically every 10 seconds. An agent will initiate a
+              video call when it is your turn.
+            </p>
+
+            <div className="flex gap-3">
+              <Button variant="outline" className="flex-1" onClick={() => navigate('/client')}>
+                Back to Portal
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 text-red-600 hover:bg-red-50"
+                onClick={() => {
+                  if (pollRef.current) clearInterval(pollRef.current);
+                  pollRef.current = null;
+                  setQueueStatus(null);
+                  setSelectedFile(null);
+                  setPreview(null);
+                }}
+              >
+                Upload Different Document
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Upload form ────────────────────────────────────────────────────────────
+  const FileIcon = selectedFile
+    ? selectedFile.type.startsWith('image/')
+      ? ImageIcon
+      : FileText
+    : null;
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white border-b px-6 py-4">
-        <div className="flex items-center justify-between max-w-7xl mx-auto">
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
-            </Button>
-            <Upload className="h-6 w-6 text-blue-600" />
-            <div>
-              <h1 className="text-xl font-bold">Document Upload</h1>
-              <p className="text-sm text-gray-600">Upload verification documents securely</p>
-            </div>
+        <div className="flex items-center gap-4 max-w-3xl mx-auto">
+          <Button variant="ghost" size="sm" onClick={() => navigate('/client')}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Back
+          </Button>
+          <Upload className="h-6 w-6 text-blue-600" />
+          <div>
+            <h1 className="text-xl font-bold">Upload Verification Document</h1>
+            <p className="text-sm text-gray-600">
+              Upload your ID and enter the queue for a live agent video verification
+            </p>
           </div>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* Upload Area */}
-        <Card className="mb-8">
-          <CardHeader>
-            <CardTitle>Upload Documents</CardTitle>
-            <CardDescription>
-              Drag and drop files or click to browse. Max file size: 10MB. 
-              Supported formats: Images (JPG, PNG, GIF), PDF, Word documents
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
-                isDragActive 
-                  ? 'border-blue-500 bg-blue-50' 
-                  : 'border-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <input {...getInputProps()} />
-              <Upload className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-              {isDragActive ? (
-                <p className="text-lg font-medium text-blue-600">Drop files here...</p>
-              ) : (
-                <>
-                  <p className="text-lg font-medium text-gray-700 mb-2">
-                    Drag & drop files here, or click to select
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Upload passport, ID cards, or other verification documents
-                  </p>
-                </>
-              )}
+      <main className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+        {/* How it works */}
+        <Card className="bg-blue-50 border-blue-200">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+              <div className="text-sm text-blue-800 space-y-1">
+                <p className="font-semibold">How verification works</p>
+                <ol className="list-decimal list-inside space-y-0.5 text-blue-700">
+                  <li>Upload a clear photo of your identity document</li>
+                  <li>You are automatically placed in the agent queue</li>
+                  <li>The first available agent starts a video call with you</li>
+                  <li>The agent confirms your document is genuine</li>
+                </ol>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Uploaded Files List */}
-        {files.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Uploaded Files ({files.length})</CardTitle>
-              <CardDescription>Manage your uploaded documents</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ScrollArea className="h-[500px]">
-                <div className="space-y-4">
-                  {files.map((file) => {
-                    const FileIcon = getFileIcon(file.type);
-                    return (
-                      <div
-                        key={file.id}
-                        className="flex items-center gap-4 p-4 border rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        {/* Thumbnail or Icon */}
-                        <div className="flex-shrink-0">
-                          {file.thumbnail_url ? (
-                            <img
-                              src={file.thumbnail_url}
-                              alt={file.name}
-                              className="w-16 h-16 object-cover rounded"
-                            />
-                          ) : (
-                            <div className="w-16 h-16 bg-gray-100 rounded flex items-center justify-center">
-                              <FileIcon className="h-8 w-8 text-gray-400" />
-                            </div>
-                          )}
-                        </div>
+        {/* Document type */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Document Type</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3">
+              {DOCUMENT_TYPES.map((dt) => (
+                <button
+                  key={dt.value}
+                  type="button"
+                  onClick={() => setDocumentType(dt.value)}
+                  className={`p-3 rounded-lg border-2 text-sm font-medium text-left transition-colors ${
+                    documentType === dt.value
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 hover:border-gray-300 text-gray-700'
+                  }`}
+                >
+                  {dt.label}
+                </button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
-                        {/* File Info */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-medium text-sm truncate">{file.name}</p>
-                            {file.status === 'success' && (
-                              <CheckCircle className="h-4 w-4 text-green-600 flex-shrink-0" />
-                            )}
-                            {file.status === 'error' && (
-                              <AlertCircle className="h-4 w-4 text-red-600 flex-shrink-0" />
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2 text-xs text-gray-500">
-                            <span>{formatFileSize(file.size)}</span>
-                            <span>•</span>
-                            <span>{new Date(file.upload_date).toLocaleString()}</span>
-                          </div>
-                          
-                          {/* Progress Bar */}
-                          {file.status === 'uploading' && (
-                            <div className="mt-2">
-                              <Progress value={file.progress} className="h-1" />
-                              <p className="text-xs text-gray-500 mt-1">
-                                Uploading... {file.progress}%
-                              </p>
-                            </div>
-                          )}
+        {/* Drop zone */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Upload Document</CardTitle>
+            <CardDescription>JPG, PNG, WebP or PDF — max 10 MB.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!selectedFile ? (
+              <div
+                {...getRootProps()}
+                className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
+                  isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                }`}
+              >
+                <input {...getInputProps()} />
+                <Upload className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                {isDragActive ? (
+                  <p className="text-lg font-medium text-blue-600">Drop the file here…</p>
+                ) : (
+                  <>
+                    <p className="text-lg font-medium text-gray-700 mb-2">
+                      Drag &amp; drop or{' '}
+                      <span className="text-blue-600">click to select</span>
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Make sure all corners are visible and the text is readable
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="border rounded-lg p-4 space-y-3">
+                {preview ? (
+                  <img
+                    src={preview}
+                    alt="Document preview"
+                    className="w-full max-h-64 object-contain rounded"
+                  />
+                ) : (
+                  <div className="flex items-center gap-3 p-4 bg-gray-50 rounded">
+                    {FileIcon && <FileIcon className="h-10 w-10 text-gray-500" />}
+                    <span className="font-medium text-gray-700">{selectedFile.name}</span>
+                  </div>
+                )}
 
-                          {/* Error Message */}
-                          {file.status === 'error' && file.error_message && (
-                            <p className="text-xs text-red-600 mt-1">{file.error_message}</p>
-                          )}
-
-                          {/* Success Badge */}
-                          {file.status === 'success' && (
-                            <Badge variant="default" className="mt-2 bg-green-600">
-                              Uploaded
-                            </Badge>
-                          )}
-                        </div>
-
-                        {/* Actions */}
-                        <div className="flex items-center gap-2">
-                          {file.status === 'success' && (
-                            <>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => downloadFile(file)}
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => downloadFile(file)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </>
-                          )}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => removeFile(file.id)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div className="flex items-center justify-between text-sm text-gray-600 px-1">
+                  <span>{selectedFile.name}</span>
+                  <span>{formatFileSize(selectedFile.size)}</span>
                 </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
-        )}
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-600 hover:bg-red-50 w-full"
+                  onClick={() => {
+                    setSelectedFile(null);
+                    setPreview(null);
+                  }}
+                >
+                  <X className="h-4 w-4 mr-2" />
+                  Remove and choose another
+                </Button>
+              </div>
+            )}
+
+            <Button
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={!selectedFile || uploading}
+              onClick={handleSubmit}
+            >
+              {uploading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Uploading…
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Submit Document &amp; Enter Queue
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
       </main>
     </div>
   );
