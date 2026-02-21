@@ -1,9 +1,10 @@
 """Billing models for multi-rail payment processing.
 
-Three tables:
-  payment_events   — immutable ledger of every payment attempt across all rails
-  subscriptions    — current plan + status per org/user
-  btc_deposits     — per-intent BTC address tracking
+Four tables:
+  payment_events          — immutable ledger of every payment attempt across all rails
+  subscriptions           — current plan + status per org/user
+  btc_deposits            — per-intent BTC address tracking
+  fee_gateway_transactions — fiat-to-THRONOS conversion tracking
 """
 
 from datetime import datetime
@@ -79,3 +80,35 @@ class BtcDeposit(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class FeeGatewayTransaction(Base):
+    """Tracks automatic fiat-to-THRONOS conversion from fee pool.
+    
+    When users pay with fiat (Stripe), 90% of fees accumulate in a buffer.
+    When buffer > threshold, we automatically:
+    1. Buy THRONOS tokens from market
+    2. Send to pool wallet
+    3. Record on Thronos Chain
+    """
+    __tablename__ = "fee_gateway_transactions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    
+    # Amounts
+    eur_amount = Column(Float, nullable=False)              # EUR to convert
+    thronos_amount = Column(Float, nullable=False)          # THRONOS purchased
+    thronos_price_eur = Column(Float, nullable=False)       # EUR per THRONOS at conversion time
+    
+    # Destination
+    pool_wallet = Column(String, nullable=False)            # Thronos pool wallet address
+    
+    # Status tracking
+    status = Column(String, nullable=False, default="pending")  # pending | processing | completed | failed
+    triggered_by = Column(String, nullable=False)           # auto | manual | admin:user_id
+    blockchain_tx_hash = Column(String, nullable=True)      # Thronos Chain TX hash
+    error_message = Column(String, nullable=True)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
