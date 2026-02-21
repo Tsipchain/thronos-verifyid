@@ -1,3 +1,4 @@
+import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc
 from models.verifications import (
@@ -23,6 +24,8 @@ import random
 import string
 import json
 
+logger = logging.getLogger(__name__)
+
 
 class VerificationService:
     
@@ -44,15 +47,101 @@ class VerificationService:
             issue_date="2020-01-10",
             expiry_date="2030-01-10",
             document_image_url=data.document_image_url,
-            verification_status=VerificationStatus.COMPLETED,
-            fraud_score=96,
-            verified_at=datetime.now()
+            verification_status=VerificationStatus.PENDING,  # Start as PENDING for AI review
+            fraud_score=0,  # Will be set by AI
+            verified_at=None  # Not verified yet
         )
         
         db.add(verification)
         await db.commit()
         await db.refresh(verification)
         return verification
+
+    @staticmethod
+    async def auto_ai_review_and_queue(verification_id: int, user_id: str) -> None:
+        """
+        Background task: AI fraud analysis + auto-queue for video call.
+
+        This runs after document upload completes. It:
+        1. Calls AIFraudService to analyze the document
+        2. Updates the verification with fraud_score and risk_level
+        3. Auto-rejects if fraud_score is too low
+        4. Adds to video call queue if passes threshold
+
+        Args:
+            verification_id: ID of the verification to analyze
+            user_id: User ID who submitted the verification
+        """
+        from core.database import db_manager
+        from services.ai_fraud_service import AIFraudService
+        from services.video_call_service import VideoCallService
+
+        # Use a fresh DB session (background tasks don't have request context)
+        async with db_manager.async_session_maker() as db:
+            try:
+                # 1. Fetch verification
+                stmt = select(DocumentVerifications).where(
+                    DocumentVerifications.id == verification_id
+                )
+                result = await db.execute(stmt)
+                verification = result.scalar_one_or_none()
+
+                if not verification:
+                    logger.error(f"Verification {verification_id} not found for AI review")
+                    return
+
+                logger.info(f"Starting AI review for verification {verification_id}")
+
+                # 2. Run AI fraud analysis
+                ai_result = await AIFraudService.analyze_document(
+                    db=db,
+                    verification=verification,
+                )
+
+                # 3. Update verification with AI results
+                verification.fraud_score = ai_result.fraud_score
+                verification.risk_level = ai_result.risk_level
+
+                # 4. Decision logic
+                if AIFraudService.should_auto_reject(ai_result.fraud_score):
+                    # Auto-reject without human review
+                    verification.verification_status = VerificationStatus.REJECTED
+                    verification.verified_at = datetime.now()
+                    await db.commit()
+
+                    logger.info(
+                        f"Verification {verification_id} auto-rejected: "
+                        f"fraud_score={ai_result.fraud_score}"
+                    )
+                    # TODO: Send notification to user
+                    return
+
+                # 5. Add to video call queue for human review
+                logger.info(
+                    f"Adding verification {verification_id} to video call queue "
+                    f"with priority {ai_result.priority.value}"
+                )
+
+                await VideoCallService.add_to_queue(
+                    db=db,
+                    verification_id=verification.id,
+                    customer_id=user_id,
+                    priority=ai_result.priority,
+                )
+
+                # Update status to IN_REVIEW (waiting for agent)
+                verification.verification_status = VerificationStatus.IN_REVIEW
+                await db.commit()
+
+                logger.info(f"Verification {verification_id} successfully queued for review")
+
+            except Exception as e:
+                logger.error(
+                    f"Error in auto_ai_review_and_queue for verification {verification_id}: {e}",
+                    exc_info=True
+                )
+                # Don't let background task crash silently
+                # TODO: Add monitoring/alerting here
     
     @staticmethod
     async def get_user_document_verification(
