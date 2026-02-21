@@ -52,8 +52,12 @@ def _public_base_url() -> str:
       2. RAILWAY_PUBLIC_DOMAIN env var (auto-injected by Railway)
       3. Fallback to localhost (works for local dev, not for external callers)
     """
-    if url := os.environ.get("PYTHON_BACKEND_URL", "").rstrip("/"):
-        return url
+    # PYTHON_BACKEND_URL may accidentally contain multiple comma-separated
+    # origins (copy-paste from CORS_ALLOW_ORIGINS).  Always use the first.
+    if raw := os.environ.get("PYTHON_BACKEND_URL", ""):
+        url = raw.split(",")[0].strip().rstrip("/")
+        if url:
+            return url
     if domain := os.environ.get("RAILWAY_PUBLIC_DOMAIN", ""):
         return f"https://{domain.rstrip('/')}"
     return "http://localhost:8000"
