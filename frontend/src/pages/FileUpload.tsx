@@ -15,7 +15,10 @@ import {
   Clock,
   Users,
   CheckCircle,
+  XCircle,
   Loader2,
+  Shield,
+  ExternalLink,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useDropzone } from 'react-dropzone';
@@ -26,6 +29,8 @@ interface QueueStatus {
   queue_position: number;
   available_agents: number;
   status: string;
+  verification_status?: string | null;
+  blockchain_tx_hash?: string | null;
 }
 
 interface UploadResult {
@@ -179,8 +184,89 @@ export default function FileUpload() {
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
+  // ── Verification complete screen ───────────────────────────────────────────
+  if (queueStatus?.status === 'completed') {
+    const approved = queueStatus.verification_status === 'approved';
+    const txHash = queueStatus.blockchain_tx_hash;
+    const txPending = !txHash;
+
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg text-center shadow-lg">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div
+                className={`w-16 h-16 rounded-full flex items-center justify-center ${
+                  approved ? 'bg-green-100' : 'bg-red-100'
+                }`}
+              >
+                {approved ? (
+                  <CheckCircle className="h-8 w-8 text-green-600" />
+                ) : (
+                  <XCircle className="h-8 w-8 text-red-600" />
+                )}
+              </div>
+            </div>
+            <CardTitle className={`text-2xl ${approved ? 'text-green-700' : 'text-red-700'}`}>
+              {approved ? 'Identity Verified' : 'Verification Rejected'}
+            </CardTitle>
+            <CardDescription>
+              {approved
+                ? 'Your identity has been confirmed by a verified agent.'
+                : 'Your document could not be verified. Please contact support or upload a different document.'}
+            </CardDescription>
+          </CardHeader>
+
+          <CardContent className="space-y-6">
+            {/* Blockchain proof */}
+            <div className="bg-gray-50 border rounded-lg p-4 text-left space-y-2">
+              <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                <Shield className="h-4 w-4 text-blue-600" />
+                Thronos Blockchain Proof
+              </div>
+              {txPending ? (
+                <div className="flex items-center gap-2 text-xs text-gray-500">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Anchoring to blockchain via ACICS miners…
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-500 font-mono break-all">{txHash}</p>
+                  <Badge variant="default" className="bg-blue-600 text-xs">
+                    Confirmed on Thronos
+                  </Badge>
+                </>
+              )}
+            </div>
+
+            <Button className="w-full" onClick={() => navigate('/client')}>
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Go to My Portal
+            </Button>
+
+            {!approved && (
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => {
+                  if (pollRef.current) clearInterval(pollRef.current);
+                  pollRef.current = null;
+                  setQueueStatus(null);
+                  setSelectedFile(null);
+                  setPreview(null);
+                }}
+              >
+                Upload a Different Document
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   // ── Queue waiting screen ───────────────────────────────────────────────────
-  if (queueStatus?.in_queue) {
+  if (queueStatus?.in_queue || queueStatus?.status === 'pending' || queueStatus?.status === 'assigned' || queueStatus?.status === 'in_progress') {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-lg text-center shadow-lg">

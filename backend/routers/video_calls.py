@@ -1,17 +1,23 @@
+import hashlib
 import logging
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession
-from pydantic import BaseModel
-from typing import List, Optional
 from datetime import datetime
+from typing import List, Optional
 
-from core.database import get_db
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.database import db_manager, get_db
 from dependencies.auth import get_current_user
-from schemas.auth import UserResponse
-from services.video_call_service import VideoCallService
-from models.video_call_queue import VideoCallQueue, CallStatus, CallPriority
 from models.agent_availability import AgentAvailability, AgentStatus
+from models.blockchain_transactions import BlockchainStatus, BlockchainTransactions
+from models.verifications import DocumentVerifications, VerificationStatus
+from models.video_call_queue import CallPriority, CallStatus, VideoCallQueue
+from schemas.auth import UserResponse
 from services.rbac import RBACService
+from services.thronos_blockchain import thronos_service
+from services.video_call_service import VideoCallService
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +57,82 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def _anchor_to_blockchain(
+    verification_id: int,
+    user_id: str,
+    doc_type: str,
+    outcome: str,
+    agent_id: str,
+    timestamp: str,
+) -> None:
+    """
+    Background task: hash the verification outcome and submit it to the
+    Thronos blockchain through the ACICS miners.  Updates
+    DocumentVerifications.blockchain_tx_hash and creates a
+    BlockchainTransactions record when the submission succeeds.
+    """
+    # Deterministic hash of the verification outcome
+    raw = f"{verification_id}:{user_id}:{doc_type}:{outcome}:{agent_id}:{timestamp}"
+    doc_hash = hashlib.sha256(raw.encode()).hexdigest()
+
+    result = thronos_service.store_verification_on_blockchain(
+        verification_id=verification_id,
+        user_id=user_id,
+        verification_type=doc_type,
+        document_hashes=[doc_hash],
+        status=outcome,
+        verified_by=agent_id,
+    )
+
+    if not result["success"]:
+        logger.error(
+            "Blockchain anchoring failed for verification %s: %s",
+            verification_id,
+            result.get("error"),
+        )
+        return
+
+    tx_hash = result["tx_hash"]
+    node_url = result["node_url"]
+    logger.info("Verification %s anchored on Thronos blockchain: %s", verification_id, tx_hash)
+
+    # Persist the transaction using a fresh DB session (background task has no request session)
+    try:
+        async with db_manager.async_session_maker() as db:
+            # 1. Store tx_hash on the verification record
+            stmt = select(DocumentVerifications).where(DocumentVerifications.id == verification_id)
+            res = await db.execute(stmt)
+            verification = res.scalar_one_or_none()
+            if verification:
+                verification.blockchain_tx_hash = tx_hash
+
+            # 2. Create a BlockchainTransactions row
+            bc_tx = BlockchainTransactions(
+                verification_id=verification_id,
+                tx_hash=tx_hash,
+                document_hash=doc_hash,
+                node_url=node_url,
+                status=BlockchainStatus.CONFIRMED,
+                confirmed_at=datetime.now(),
+            )
+            db.add(bc_tx)
+            await db.commit()
+
+        # 3. Notify the client via WebSocket (best-effort)
+        await manager.send_personal_message(
+            {
+                "type": "verification_anchored",
+                "verification_id": verification_id,
+                "outcome": outcome,
+                "tx_hash": tx_hash,
+                "node": node_url,
+            },
+            user_id,
+        )
+    except Exception as exc:
+        logger.error("Failed to persist blockchain record for verification %s: %s", verification_id, exc)
+
+
 # Pydantic models
 class AddToQueueRequest(BaseModel):
     verification_id: int
@@ -64,6 +146,7 @@ class AssignAgentRequest(BaseModel):
 
 class CompleteCallRequest(BaseModel):
     notes: Optional[str] = None
+    outcome: str = "approved"  # "approved" | "rejected"
 
 
 class UpdateAgentStatusRequest(BaseModel):
@@ -250,20 +333,62 @@ async def start_call(
 async def complete_call(
     call_id: int,
     request: CompleteCallRequest,
+    background_tasks: BackgroundTasks,
     current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
 ):
-    """Complete a video call"""
+    """
+    Complete a video call.
+
+    Sets the verification outcome (approved / rejected) on the
+    DocumentVerifications record, then kicks off a background task that
+    hashes the result and anchors it on the Thronos blockchain via the
+    ACICS miners.  The client is notified via WebSocket when the
+    blockchain transaction is confirmed.
+    """
     try:
         call = await VideoCallService.complete_call(db, call_id, request.notes)
 
-        # Broadcast call completion
-        await manager.broadcast({
-            "type": "call_completed",
-            "call_id": call.id
-        })
+        # 1. Update the verification record with the agent's decision
+        outcome = request.outcome.lower()
+        new_status = VerificationStatus.APPROVED if outcome == "approved" else VerificationStatus.REJECTED
 
-        # Try to auto-assign next call
+        stmt = select(DocumentVerifications).where(DocumentVerifications.id == call.verification_id)
+        res = await db.execute(stmt)
+        verification = res.scalar_one_or_none()
+
+        if verification:
+            verification.verification_status = new_status
+            verification.verified_at = datetime.now()
+            await db.commit()
+            await db.refresh(verification)
+
+            # 2. Anchor on Thronos blockchain (non-blocking)
+            background_tasks.add_task(
+                _anchor_to_blockchain,
+                verification_id=verification.id,
+                user_id=verification.user_id,
+                doc_type=verification.document_type.value,
+                outcome=outcome,
+                agent_id=current_user.id,
+                timestamp=datetime.now().isoformat(),
+            )
+
+        # 3. Notify client of verification result immediately (before blockchain confirms)
+        await manager.send_personal_message(
+            {
+                "type": "verification_complete",
+                "outcome": outcome,
+                "verification_id": call.verification_id,
+                "tx_hash": "pending",
+            },
+            call.customer_id,
+        )
+
+        # 4. Broadcast to all agents
+        await manager.broadcast({"type": "call_completed", "call_id": call.id})
+
+        # 5. Auto-assign next pending call
         await VideoCallService.auto_assign_next_call(db)
 
         return CallResponse(
@@ -276,13 +401,13 @@ async def complete_call(
             created_at=call.created_at,
             assigned_at=call.assigned_at,
             started_at=call.started_at,
-            completed_at=call.completed_at
+            completed_at=call.completed_at,
         )
 
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error completing call: {e}")
+        logger.error("Error completing call: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

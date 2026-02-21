@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from dependencies.auth import get_current_user
 from dependencies.database import get_db
 from models.agent_availability import AgentAvailability, AgentStatus
+from models.blockchain_transactions import BlockchainTransactions, BlockchainStatus
 from models.verifications import DocumentType, DocumentVerifications, VerificationStatus
 from models.video_call_queue import CallPriority, CallStatus, VideoCallQueue
 from schemas.auth import UserResponse
@@ -141,15 +142,16 @@ async def get_queue_status(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Returns the current queue position for the logged-in client.
-    The frontend can poll this every few seconds to update the waiting screen.
+    Returns the current queue/verification status for the logged-in client.
+
+    The frontend polls this every 10 s to update the waiting screen.
+    Once the agent completes the call the entry moves to COMPLETED and
+    we return the verification outcome plus the Thronos blockchain tx_hash.
     """
+    # Look for the most recent queue entry belonging to this client
     stmt = (
         select(VideoCallQueue)
-        .where(
-            VideoCallQueue.customer_id == current_user.id,
-            VideoCallQueue.status == CallStatus.PENDING,
-        )
+        .where(VideoCallQueue.customer_id == current_user.id)
         .order_by(VideoCallQueue.created_at.desc())
         .limit(1)
     )
@@ -159,6 +161,45 @@ async def get_queue_status(
     if not queue_entry:
         return {"in_queue": False, "queue_position": 0, "queue_id": None}
 
+    # If call is already completed, return the verification outcome + blockchain proof
+    if queue_entry.status == CallStatus.COMPLETED:
+        verification_status = None
+        blockchain_tx_hash = None
+
+        ver_stmt = select(DocumentVerifications).where(
+            DocumentVerifications.id == queue_entry.verification_id
+        )
+        ver_result = await db.execute(ver_stmt)
+        verification = ver_result.scalar_one_or_none()
+
+        if verification:
+            verification_status = verification.verification_status.value
+            blockchain_tx_hash = verification.blockchain_tx_hash
+
+            # If blockchain_tx_hash is not yet on the model, try BlockchainTransactions table
+            if not blockchain_tx_hash:
+                bc_stmt = (
+                    select(BlockchainTransactions)
+                    .where(BlockchainTransactions.verification_id == verification.id)
+                    .order_by(BlockchainTransactions.created_at.desc())
+                    .limit(1)
+                )
+                bc_result = await db.execute(bc_stmt)
+                bc_tx = bc_result.scalar_one_or_none()
+                if bc_tx:
+                    blockchain_tx_hash = bc_tx.tx_hash
+
+        return {
+            "in_queue": False,
+            "queue_id": queue_entry.id,
+            "queue_position": 0,
+            "available_agents": 0,
+            "status": "completed",
+            "verification_status": verification_status,
+            "blockchain_tx_hash": blockchain_tx_hash,
+        }
+
+    # Still in queue (PENDING or ASSIGNED / IN_PROGRESS)
     pos_stmt = (
         select(func.count())
         .select_from(VideoCallQueue)
@@ -182,4 +223,6 @@ async def get_queue_status(
         "queue_position": queue_position,
         "available_agents": available_agents,
         "status": queue_entry.status.value,
+        "verification_status": None,
+        "blockchain_tx_hash": None,
     }
