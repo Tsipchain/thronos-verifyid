@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     thronos_cdn_url: str = "https://thrchain.vercel.app"
     thronos_ai_core_url: str = "https://thronos-v3-6.onrender.com"
     thronos_admin_secret: str = ""
+    thronos_ai_internal_key: str = ""  # Internal API key for AI Core integration
 
     # Email / Domain Services
     email_enabled: bool = False
