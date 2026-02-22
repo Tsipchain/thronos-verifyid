@@ -223,9 +223,11 @@ async def thronos_chat(
 ):
     """
     Authenticated AI assistant chat with credit deduction.
-    Primary: Thronos AI Core. Fallback: gentxt (OpenAI-compatible).
-    Document fraud detection knowledge is automatically injected.
-    Each request costs 10 credits. New users receive 50 free credits.
+    Primary: Thronos AI Core.
+    NOTE: We intentionally **disable** the gentxt fallback here to avoid
+    a known bug in the OpenAI Python client (by_alias / NoneType issue).
+    If the core is unavailable, we return a clean 502 error instead of
+    leaking low-level stack traces to the user.
     """
     from routers.credits import deduct_credits, get_or_create_credits, AI_REQUEST_COST
 
@@ -243,21 +245,13 @@ async def thronos_chat(
     # --- Primary: Thronos AI Core ---
     content = await _chat_via_thronos_core(enriched_messages, request.model, request.temperature)
 
-    # --- Fallback: OpenAI-compatible gentxt ---
+    # If core is down, do NOT call gentxt fallback (to avoid by_alias bug)
     if content is None:
-        try:
-            content = await _chat_via_gentxt(enriched_messages, request.model, request.temperature)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="AI service unavailable. Configure APP_AI_BASE_URL and APP_AI_KEY.",
-            )
-        except Exception as e:
-            logger.error(f"gentxt fallback failed: {e}")
-            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=extract_error_message(e))
-
-    if not content:
-        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI returned an empty response")
+        logger.error("[ThronosChat] AI Core unavailable; skipping gentxt fallback")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AI Core unavailable. Please try again later.",
+        )
 
     # Deduct credits after successful response
     new_balance = await deduct_credits(
