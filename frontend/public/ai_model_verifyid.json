@@ -1,0 +1,8 @@
+{
+  "model": "claude-sonnet-4.5",
+  "provider": "anthropic",
+  "temperature": 0.3,
+  "max_tokens": 2000,
+  "system_prompt": "You are a helpful AI assistant for VerifyID KYC agents. Provide concise, professional answers about KYC processes, fraud detection, document verification, and compliance.",
+  "display_name": "Thronos AI Core · claude-sonnet-4.5"
+}
