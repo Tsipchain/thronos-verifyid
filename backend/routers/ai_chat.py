@@ -25,27 +25,25 @@ class ChatRequest(BaseModel):
     context: Optional[str] = Field(default=None)
     agent_id: Optional[str] = Field(default=None)
 
-class ChatResponse(BaseModel):
-    """AI chat response"""
-    response: str
-    model: str = "claude-sonnet-4.5"
-    tokens_used: int = 0
 
-@router.post("/chat", response_model=ChatResponse)
+@router.post("/chat")
 async def agent_chat(
     payload: ChatRequest,
     authorization: str = Header(None)
 ):
-    """
-    Free AI chat for Agent Dashboard modal.
-    No credit billing - simple forward to AI Core.
+    """Free AI chat for Agent Dashboard modal.
+
+    This endpoint is intentionally very simple:
+    - No credit billing
+    - Just forwards to AI Core `/api/chat`
+    - Returns raw JSON dict (no Pydantic response_model)
     """
     if not AI_KEY:
         logger.error("[AI Chat] APP_AI_KEY not configured")
         raise HTTPException(500, "AI chat not configured")
-    
+
     logger.info(f"[AI Chat] Agent {payload.agent_id or 'unknown'}: {payload.message[:50]}...")
-    
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
@@ -53,40 +51,46 @@ async def agent_chat(
                 json={
                     "message": payload.message,
                     "context": payload.context or "VerifyID Agent",
-                    "system_prompt": "You are a helpful AI assistant for VerifyID KYC agents. Provide concise, professional answers about KYC processes, fraud detection, and document verification."
+                    "system_prompt": (
+                        "You are a helpful AI assistant for VerifyID KYC agents. "
+                        "Provide concise, professional answers about KYC processes, "
+                        "fraud detection, and document verification."
+                    ),
                 },
                 headers={
                     "X-Internal-Key": AI_KEY,
-                    "Content-Type": "application/json"
-                }
+                    "Content-Type": "application/json",
+                },
             )
-            
+
             if response.status_code != 200:
-                logger.error(f"[AI Chat] AI Core {response.status_code}: {response.text}")
+                logger.error("[AI Chat] AI Core %s: %s", response.status_code, response.text)
                 raise HTTPException(502, "AI Core unavailable")
-            
-            data = response.json()
-            logger.info(f"[AI Chat] Response: {len(data.get('response', ''))} chars")
-            
-            return ChatResponse(
-                response=data.get("response", "No response from AI"),
-                model=data.get("model", "claude-sonnet-4.5"),
-                tokens_used=data.get("tokens_used", 0)
-            )
-    
+
+            data = response.json() or {}
+            logger.info("[AI Chat] Response: %d chars", len(data.get("response", "")))
+
+            # Return plain dict to avoid any Pydantic serialization edge cases
+            return {
+                "response": data.get("response", "No response from AI"),
+                "model": data.get("model", "claude-sonnet-4.5"),
+                "tokens_used": data.get("tokens_used", 0),
+            }
+
     except httpx.TimeoutException:
         logger.error("[AI Chat] Timeout")
         raise HTTPException(504, "AI request timed out - please try again")
     except httpx.HTTPError as e:
-        logger.error(f"[AI Chat] HTTP error: {e}")
+        logger.error("[AI Chat] HTTP error: %s", e)
         raise HTTPException(502, f"AI Core error: {str(e)}")
     except Exception as e:
-        logger.error(f"[AI Chat] Unexpected error: {e}")
+        logger.error("[AI Chat] Unexpected error: %s", e)
         raise HTTPException(500, f"Chat failed: {str(e)}")
+
 
 @router.get("/status")
 async def chat_status():
-    """Check AI Core availability"""
+    """Check AI Core availability."""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             response = await client.get(f"{AI_CORE_URL}/health")
@@ -95,13 +99,13 @@ async def chat_status():
                 "ok": is_available,
                 "ai_core": AI_CORE_URL,
                 "enabled": bool(AI_KEY),
-                "status": "operational" if is_available else "degraded"
+                "status": "operational" if is_available else "degraded",
             }
     except Exception as e:
-        logger.warning(f"[AI Status] Health check failed: {e}")
+        logger.warning("[AI Status] Health check failed: %s", e)
         return {
             "ok": False,
             "ai_core": AI_CORE_URL,
             "enabled": bool(AI_KEY),
-            "status": "unavailable"
+            "status": "unavailable",
         }

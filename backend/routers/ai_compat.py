@@ -10,7 +10,7 @@ import logging
 
 from fastapi import APIRouter, Header
 
-from .ai_chat import ChatRequest, ChatResponse, agent_chat
+from .ai_chat import ChatRequest, agent_chat
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/ai/hub", tags=["ai-compat"])
 
 
-@router.post("/thronos-chat", response_model=ChatResponse)
+@router.post("/thronos-chat")
 async def thronos_chat_legacy(
     payload: ChatRequest,
     authorization: str = Header(None),
@@ -31,6 +31,9 @@ async def thronos_chat_legacy(
     This wrapper just forwards the request to the new
     `agent_chat` handler in `ai_chat.py`, so all billing,
     logging and error handling stays in one place.
+
+    We also return a plain dict (no response_model) to avoid
+    any Pydantic serialization by_alias issues.
     """
     logger.info("[AI Compat] /api/v1/ai/hub/thronos-chat → /api/ai/chat")
     return await agent_chat(payload=payload, authorization=authorization)
