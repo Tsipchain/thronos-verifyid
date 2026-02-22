@@ -115,7 +115,7 @@ class ThronosChatMessage(BaseModel):
 class ThronosChatRequest(BaseModel):
     messages: list[ThronosChatMessage]
     # First available model on Thronos AI Core / gentxt fallback
-    model: str = Field(default="claude-sonnet-4-6")
+    model: str = Field(default="claude-sonnet-4-5-20250929")
     temperature: float = Field(default=0.3, ge=0.0, le=1.0)
 
 

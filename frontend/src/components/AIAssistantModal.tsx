@@ -19,8 +19,8 @@ interface AIAssistantModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-// Aligned with Thronos AI Core default model
-const VERIFYID_MODEL = 'claude-sonnet-4.5';
+// Aligned with Thronos AI Core model IDs
+const VERIFYID_MODEL = 'claude-sonnet-4-5-20250929';
 
 export default function AIAssistantModal({ open, onOpenChange }: AIAssistantModalProps) {
   const { toast } = useToast();
