@@ -45,6 +45,7 @@ export default function CallAgentDashboard() {
   const [ws, setWs] = useState<WebSocket | null>(null);
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -286,15 +287,6 @@ export default function CallAgentDashboard() {
             Logout
           </Button>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setAiModalOpen(true)}
-          className="gap-2"
-        >
-          <Bot className="h-4 w-4" />
-          AI Assistant
-        </Button>
       </div>
 
       <Tabs defaultValue="pending" className="w-full">
