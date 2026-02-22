@@ -1,11 +1,12 @@
 """Compatibility router for legacy AI Assistant endpoints.
 
-Supports both of the old frontend paths:
+Supports the old frontend path:
 - /api/v1/ai/hub/thronos-chat
-- /api/v1/aihub/thronos-chat
 
-Both are forwarded to the new AI chat handler defined
-in `ai_chat.py` (POST /api/ai/chat).
+This is kept only for backwards compatibility. New frontends
+should call the billed /api/v1/aihub/thronos-chat endpoint,
+which is handled by `aihub.thronos_chat` and performs
+proper credit deduction.
 """
 import logging
 
@@ -15,7 +16,7 @@ from .ai_chat import ChatRequest, agent_chat
 
 logger = logging.getLogger(__name__)
 
-# No prefix so we can register full legacy paths explicitly
+# No prefix so we can register the full legacy path explicitly
 router = APIRouter(tags=["ai-compat"])
 
 
@@ -24,21 +25,12 @@ async def thronos_chat_legacy_hub(
     payload: ChatRequest,
     authorization: str = Header(None),
 ):
-    """Legacy endpoint with `/api/v1/ai/hub` prefix."""
-    logger.info("[AI Compat] /api/v1/ai/hub/thronos-chat → /api/ai/chat")
-    return await agent_chat(payload=payload, authorization=authorization)
+    """Legacy endpoint with `/api/v1/ai/hub` prefix.
 
-
-@router.post("/api/v1/aihub/thronos-chat")
-async def thronos_chat_legacy_aihubsquashed(
-    payload: ChatRequest,
-    authorization: str = Header(None),
-):
-    """Legacy endpoint with `/api/v1/aihub` (missing slash) prefix.
-
-    Some frontend builds send requests to `/api/v1/aihub/thronos-chat`.
-    This route ensures those still work by forwarding them to the same
-    AI chat handler as the proper path.
+    Forwards to the free /api/ai/chat endpoint without
+    any credit billing. New VerifyID frontends should
+    NOT use this path; they should call /api/v1/aihub/thronos-chat
+    instead so that credits are deducted correctly.
     """
-    logger.info("[AI Compat] /api/v1/aihub/thronos-chat → /api/ai/chat")
+    logger.info("[AI Compat] /api/v1/ai/hub/thronos-chat → /api/ai/chat")
     return await agent_chat(payload=payload, authorization=authorization)

@@ -79,19 +79,29 @@ Help with:
 - Document fraud detection and red flags
 Be concise, friendly, and professional. When uncertain about fraud indicators, always recommend supervisor escalation.`;
 
-      // New, simpler payload expected by backend /api/v1/aihub/thronos-chat
       const response = await apiClient.post<{
-        response: string;
-        model: string;
-        tokens_used: number;
-      }>('/api/v1/aihub/thronos-chat', {
-        message: userMessage,
-        context: systemPrompt,
-        agent_id: 'verifyid-agent-ui'
-      });
+        content: string;
+        credits_used: number;
+        credits_remaining: number;
+      }>('/api/v1/aihub/thronos-chat',
+        {
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...messages.map(m => ({ role: m.role, content: m.content })),
+            { role: 'user', content: userMessage }
+          ],
+          model: VERIFYID_MODEL,
+          temperature: 0.3
+        }
+      );
 
-      const assistantMessage = response.data.response;
+      const assistantMessage = response.data.content;
       setMessages(prev => [...prev, { role: 'assistant', content: assistantMessage }]);
+
+      // Update credit balance from response
+      if (response.data.credits_remaining !== undefined) {
+        setCredits(response.data.credits_remaining);
+      }
     } catch (error) {
       const errObj = error as { data?: { detail?: string }; response?: { data?: { detail?: string }; status?: number }; message?: string };
       const detail =
