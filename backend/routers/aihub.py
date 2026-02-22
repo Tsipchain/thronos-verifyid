@@ -133,12 +133,54 @@ async def _chat_via_thronos_core(messages: list[dict], model: str, temperature: 
     payload = {"model": model, "messages": messages, "temperature": temperature}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.post(f"{settings.thronos_ai_core_url}/api/ai/chat", json=payload, headers=headers)
+            resp = await client.post(
+                f"{settings.thronos_ai_core_url}/api/ai/chat",
+                json=payload,
+                headers=headers,
+            )
+
+        # Log full body once so we can debug schema mismatches
+        logger.info("[AI Core] status=%s body=%s", resp.status_code, resp.text)
+
         if resp.status_code == 200:
-            data = resp.json()
-            return data.get("response") or data.get("content") or None
-        logger.warning(f"Thronos AI Core returned {resp.status_code}")
-    except Exception as e:
+            text: Optional[str] = None
+
+            # Try structured JSON parsing first
+            try:
+                data = resp.json()
+            except Exception as e:
+                logger.warning("[AI Core] JSON parse failed: %s", e)
+            else:
+                # 1) Direct string fields we expect
+                for key in ("response", "content", "message", "text"):
+                    value = data.get(key)
+                    if isinstance(value, str) and value.strip():
+                        text = value
+                        break
+
+                # 2) OpenAI-style: {"choices":[{"message":{"content":"..."}}]}
+                if text is None:
+                    try:
+                        choices = data.get("choices")
+                        if isinstance(choices, list) and choices:
+                            first = choices[0]
+                            if isinstance(first, dict):
+                                msg = first.get("message")
+                                if isinstance(msg, dict):
+                                    content_val = msg.get("content")
+                                    if isinstance(content_val, str) and content_val.strip():
+                                        text = content_val
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("[AI Core] choices/message parse failed: %s", e)
+
+            # 3) Fallback to raw text body
+            if text is None and resp.text:
+                text = resp.text
+
+            return text
+
+        logger.warning("Thronos AI Core returned %s", resp.status_code)
+    except Exception as e:  # noqa: BLE001
         logger.warning(f"Thronos AI Core unreachable, using fallback: {e}")
     return None
 
