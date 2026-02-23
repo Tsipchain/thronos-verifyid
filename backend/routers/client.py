@@ -1,4 +1,5 @@
 import base64
+import json
 import logging
 from datetime import datetime
 
@@ -46,17 +47,16 @@ PRIORITY_MAP = {
 @router.post("/upload-document")
 async def upload_document(
     file: UploadFile = File(...),
+    back_file: UploadFile = File(default=None),
     document_type: str = Form(default="national_id"),
     priority: str = Form(default="normal"),
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Upload an identity document, persist it to the DB as a base64 data URL,
-    create a DocumentVerifications record, and automatically add the client
-    to the VideoCallQueue for agent verification.
-
-    Returns the queue position so the frontend can show a waiting screen.
+    Upload an identity document (front required, back optional for ID/licence).
+    Persists as base64 data URLs, creates a DocumentVerifications record, and
+    automatically adds the client to the VideoCallQueue for agent verification.
     """
     content = await file.read()
 
@@ -70,9 +70,20 @@ async def upload_document(
                    "Accepted types: JPEG, PNG, GIF, WebP, PDF.",
         )
 
-    # Encode as base64 data URL so we can store it without an external OSS service
+    # Encode front as base64 data URL
     b64_content = base64.b64encode(content).decode("utf-8")
     data_url = f"data:{file.content_type};base64,{b64_content}"
+
+    # Encode back image if provided
+    back_data_url: str | None = None
+    if back_file and back_file.filename:
+        back_content = await back_file.read()
+        if len(back_content) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=400, detail="Back file too large. Maximum allowed size is 10 MB.")
+        if back_file.content_type not in ALLOWED_CONTENT_TYPES:
+            raise HTTPException(status_code=400, detail=f"Back file type '{back_file.content_type}' is not allowed.")
+        back_b64 = base64.b64encode(back_content).decode("utf-8")
+        back_data_url = f"data:{back_file.content_type};base64,{back_b64}"
 
     doc_type = DOC_TYPE_MAP.get(document_type, DocumentType.NATIONAL_ID)
     call_priority = PRIORITY_MAP.get(priority, CallPriority.NORMAL)
@@ -83,6 +94,7 @@ async def upload_document(
             user_id=current_user.id,
             document_type=doc_type,
             document_image_url=data_url,
+            extracted_data=json.dumps({"back_image_url": back_data_url}) if back_data_url else None,
             verification_status=VerificationStatus.PENDING,
             created_at=datetime.now(),
         )
