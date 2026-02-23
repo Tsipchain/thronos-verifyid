@@ -305,9 +305,19 @@ async def start_call(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Start a video call"""
+    """Start a video call and notify the customer via WebSocket."""
     try:
         call = await VideoCallService.start_call(db, call_id)
+
+        # Notify the customer so their waiting screen navigates to the video call page
+        await manager.send_personal_message(
+            {
+                "type": "call_started",
+                "call_id": call.id,
+                "verification_id": call.verification_id,
+            },
+            call.customer_id,
+        )
 
         return CallResponse(
             id=call.id,

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '@/lib/auth';
 import { apiClient } from '@/lib/api';
+import { getAPIBaseURL } from '@/lib/config';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -74,18 +75,44 @@ export default function FileUpload() {
   const [uploading, setUploading] = useState(false);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const needsBack = TWO_SIDED.has(documentType);
+
+  // Connect to the signaling WebSocket so we get instant call_started notification
+  const connectWs = (userId: string) => {
+    if (wsRef.current) return;
+    const base = getAPIBaseURL();
+    const wsBase = base.startsWith('https') ? base.replace('https', 'wss') : base.replace('http', 'ws');
+    const ws = new WebSocket(`${wsBase}/api/v1/video-calls/ws/${userId}`);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'call_started') {
+          // Agent started the call — navigate immediately to the client video call page
+          if (pollRef.current) clearInterval(pollRef.current);
+          ws.close();
+          navigate(`/client/video-call/${msg.call_id}`);
+        }
+      } catch { /* ignore */ }
+    };
+    ws.onerror = () => { wsRef.current = null; };
+    ws.onclose = () => { wsRef.current = null; };
+  };
 
   useEffect(() => {
     const ensureAuth = async () => {
       const user = await authApi.getCurrentUser();
-      if (!user) navigate('/login');
+      if (!user) { navigate('/login'); return; }
+      connectWs(user.id);
     };
     ensureAuth();
     checkExistingQueue();
 
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      wsRef.current?.close();
     };
   }, [navigate]);
 
@@ -93,6 +120,11 @@ export default function FileUpload() {
     try {
       const response = await apiClient.get<QueueStatus>('/api/v1/client/queue-status');
       if (response.data.in_queue) {
+        // If already in_progress, go straight to video call
+        if (response.data.status === 'in_progress' && response.data.queue_id) {
+          navigate(`/client/video-call/${response.data.queue_id}`);
+          return;
+        }
         setQueueStatus(response.data);
         startPolling();
       }
@@ -106,6 +138,12 @@ export default function FileUpload() {
     pollRef.current = setInterval(async () => {
       try {
         const response = await apiClient.get<QueueStatus>('/api/v1/client/queue-status');
+        // If agent started the call, navigate immediately
+        if (response.data.status === 'in_progress' && response.data.queue_id) {
+          if (pollRef.current) clearInterval(pollRef.current);
+          navigate(`/client/video-call/${response.data.queue_id}`);
+          return;
+        }
         setQueueStatus(response.data);
         if (!response.data.in_queue) {
           if (pollRef.current) clearInterval(pollRef.current);

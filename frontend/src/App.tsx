@@ -19,6 +19,7 @@ import UsersPage from './pages/Users';
 import SettingsPage from './pages/Settings';
 import Credits from './pages/Credits';
 import AgentVideoCall from './pages/AgentVideoCall';
+import ClientVideoCall from './pages/ClientVideoCall';
 
 const queryClient = new QueryClient();
 
@@ -64,8 +65,9 @@ const App = () => {
             
             <Route path="/agent/video-call/:callId" element={<AgentVideoCall />} />
             <Route path="/agent/*" element={<CallAgentDashboard />} />
-            <Route path="/client/*" element={<ClientPortal />} />
+            <Route path="/client/video-call/:callId" element={<ClientVideoCall />} />
             <Route path="/client/upload" element={<FileUpload />} />
+            <Route path="/client/*" element={<ClientPortal />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/credits" element={<Credits />} />
             <Route path="*" element={<NotFound />} />
