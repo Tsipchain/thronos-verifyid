@@ -32,7 +32,7 @@ class DocumentVerifications(Base):
     nationality = Column(String, nullable=True)
     issue_date = Column(String, nullable=True)
     expiry_date = Column(String, nullable=True)
-    document_image_url = Column(String, nullable=True)
+    document_image_url = Column(Text, nullable=True)
     verification_status = Column(SQLEnum(VerificationStatus), default=VerificationStatus.PENDING, nullable=False)
     fraud_score = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
