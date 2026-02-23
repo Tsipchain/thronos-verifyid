@@ -165,6 +165,7 @@ class CallResponse(BaseModel):
     started_at: Optional[datetime]
     completed_at: Optional[datetime]
     wait_time_seconds: Optional[int] = None
+    client_online: Optional[bool] = None  # True if client's WebSocket is currently connected
 
 
 class AgentResponse(BaseModel):
@@ -246,7 +247,8 @@ async def get_pending_calls(
                 assigned_at=call.assigned_at,
                 started_at=call.started_at,
                 completed_at=call.completed_at,
-                wait_time_seconds=int((datetime.now() - call.created_at).total_seconds())
+                wait_time_seconds=int((datetime.now() - call.created_at).total_seconds()),
+                client_online=call.customer_id in manager.active_connections,
             )
             for call in calls
         ]
@@ -485,6 +487,9 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 await websocket.send_json({"type": "heartbeat_ack"})
     except WebSocketDisconnect:
         manager.disconnect(user_id)
+        # Notify all remaining connected users (agents) that this client went offline
+        await manager.broadcast({"type": "client_disconnected", "user_id": user_id})
     except Exception as e:
         logger.error(f"WebSocket error for {user_id}: {e}")
         manager.disconnect(user_id)
+        await manager.broadcast({"type": "client_disconnected", "user_id": user_id})
