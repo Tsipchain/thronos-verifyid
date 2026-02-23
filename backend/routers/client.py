@@ -4,12 +4,11 @@ import logging
 from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dependencies.auth import get_current_user
 from dependencies.database import get_db
-from models.agent_availability import AgentAvailability, AgentStatus
 from models.blockchain_transactions import BlockchainTransactions, BlockchainStatus
 from models.verifications import DocumentType, DocumentVerifications, VerificationStatus
 from models.video_call_queue import CallPriority, CallStatus, VideoCallQueue
@@ -21,8 +20,8 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/client", tags=["client"])
 
 
-async def _run_fraud_check(verification_id: int, document_type: str) -> None:
-    """Background task: run AI fraud analysis and update the verification record."""
+async def _run_fraud_check(verification_id: int, document_type: str, priority: str = "normal") -> None:
+    """Background task: run AI fraud analysis, then either add to agent queue or reject."""
     from core.database import db_manager
     from sqlalchemy import select as _select
     try:
@@ -40,27 +39,63 @@ async def _run_fraud_check(verification_id: int, document_type: str) -> None:
 
             fraud_score = ai_result.get("fraud_score", 50)
             risk_level = ai_result.get("risk_level", "medium")
-
             verification.fraud_score = fraud_score
             verification.risk_level = risk_level
-
-            if fraud_score < 30:
-                # Very low score → auto-reject, remove from queue
-                verification.verification_status = VerificationStatus.REJECTED
-                queue_stmt = _select(VideoCallQueue).where(
-                    VideoCallQueue.verification_id == verification_id,
-                    VideoCallQueue.status == CallStatus.PENDING,
-                )
-                q_result = await db.execute(queue_stmt)
-                queue_entry = q_result.scalar_one_or_none()
-                if queue_entry:
-                    queue_entry.status = CallStatus.CANCELLED
-
             await db.commit()
-            logger.info(
-                "Fraud check complete for verification %d: score=%d risk=%s",
-                verification_id, fraud_score, risk_level,
-            )
+
+            if fraud_score >= 30:
+                # Fraud check passed → add to agent queue
+                call_priority = PRIORITY_MAP.get(priority, CallPriority.NORMAL)
+                queue_entry = VideoCallQueue(
+                    verification_id=verification_id,
+                    customer_id=verification.user_id,
+                    priority=call_priority,
+                    status=CallStatus.PENDING,
+                    created_at=datetime.now(),
+                )
+                db.add(queue_entry)
+                await db.commit()
+                await db.refresh(queue_entry)
+
+                logger.info(
+                    "Fraud check passed for verification %d (score=%d). Added to queue as entry %d.",
+                    verification_id, fraud_score, queue_entry.id,
+                )
+
+                # Notify client: they're now in the agent queue
+                try:
+                    from routers.video_calls import manager as _ws
+                    await _ws.send_personal_message(
+                        {"type": "fraud_passed", "queue_id": queue_entry.id, "verification_id": verification_id},
+                        verification.user_id,
+                    )
+                    # Notify agents: new call waiting
+                    await _ws.broadcast(
+                        {"type": "new_call", "call_id": queue_entry.id, "verification_id": verification_id, "priority": priority}
+                    )
+                except Exception as ws_exc:
+                    logger.warning("WS notify failed after fraud pass for %d: %s", verification_id, ws_exc)
+            else:
+                # Fraud check failed → reject immediately
+                verification.verification_status = VerificationStatus.REJECTED
+                await db.commit()
+
+                logger.info(
+                    "Fraud check FAILED for verification %d (score=%d). Auto-rejected.",
+                    verification_id, fraud_score,
+                )
+
+                # Notify client: document rejected
+                try:
+                    from routers.video_calls import manager as _ws
+                    await _ws.send_personal_message(
+                        {"type": "fraud_failed", "verification_id": verification_id,
+                         "reason": "Document could not be verified by our AI system."},
+                        verification.user_id,
+                    )
+                except Exception as ws_exc:
+                    logger.warning("WS notify failed after fraud fail for %d: %s", verification_id, ws_exc)
+
     except Exception as exc:
         logger.error("Fraud check failed for verification %d: %s", verification_id, exc)
 
@@ -132,10 +167,10 @@ async def upload_document(
         back_data_url = f"data:{back_file.content_type};base64,{back_b64}"
 
     doc_type = DOC_TYPE_MAP.get(document_type, DocumentType.NATIONAL_ID)
-    call_priority = PRIORITY_MAP.get(priority, CallPriority.NORMAL)
 
     try:
-        # 1. Create the DocumentVerifications record
+        # 1. Create the DocumentVerifications record only — the queue entry is created
+        #    AFTER the AI fraud check passes (inside _run_fraud_check background task).
         verification = DocumentVerifications(
             user_id=current_user.id,
             document_type=doc_type,
@@ -145,55 +180,23 @@ async def upload_document(
             created_at=datetime.now(),
         )
         db.add(verification)
-        await db.flush()  # Assigns verification.id without committing
-
-        # 2. Add to the video call queue
-        queue_entry = VideoCallQueue(
-            verification_id=verification.id,
-            customer_id=current_user.id,
-            priority=call_priority,
-            status=CallStatus.PENDING,
-            created_at=datetime.now(),
-        )
-        db.add(queue_entry)
         await db.commit()
         await db.refresh(verification)
-        await db.refresh(queue_entry)
 
-        # Kick off AI fraud analysis in the background (non-blocking)
-        background_tasks.add_task(_run_fraud_check, verification.id, document_type)
+        # 2. Kick off AI fraud analysis in the background.
+        #    On pass → creates queue entry + notifies client + notifies agents.
+        #    On fail → sets status REJECTED + notifies client.
+        background_tasks.add_task(_run_fraud_check, verification.id, document_type, priority)
 
     except Exception as exc:
         await db.rollback()
-        logger.error("Failed to save document or create queue entry: %s", exc, exc_info=True)
+        logger.error("Failed to save document: %s", exc, exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to save document: {exc}")
-
-    # 3. Calculate current queue position (# of PENDING entries with id <= ours)
-    pos_stmt = (
-        select(func.count())
-        .select_from(VideoCallQueue)
-        .where(
-            VideoCallQueue.status == CallStatus.PENDING,
-            VideoCallQueue.id <= queue_entry.id,
-        )
-    )
-    pos_result = await db.execute(pos_stmt)
-    queue_position = pos_result.scalar_one()
-
-    # 4. Count available agents (online + recent heartbeat)
-    agent_stmt = select(func.count()).select_from(AgentAvailability).where(
-        AgentAvailability.status == AgentStatus.ONLINE,
-    )
-    agent_result = await db.execute(agent_stmt)
-    available_agents = agent_result.scalar_one()
 
     return {
         "verification_id": verification.id,
-        "queue_id": queue_entry.id,
-        "queue_position": queue_position,
-        "available_agents": available_agents,
-        "status": "pending",
-        "message": "Document uploaded. You are now in the queue for video verification.",
+        "status": "fraud_check",
+        "message": "Document uploaded. AI fraud analysis is running — you will be notified shortly.",
     }
 
 
@@ -219,7 +222,40 @@ async def get_queue_status(
     result = await db.execute(stmt)
     queue_entry = result.scalar_one_or_none()
 
+    # Treat CANCELLED as "not in queue" — check verification status instead
+    if queue_entry and queue_entry.status == CallStatus.CANCELLED:
+        queue_entry = None
+
     if not queue_entry:
+        # No active queue entry: check whether a verification exists (fraud check running / failed / AI-reviewed)
+        ver_stmt = (
+            select(DocumentVerifications)
+            .where(DocumentVerifications.user_id == current_user.id)
+            .order_by(DocumentVerifications.created_at.desc())
+            .limit(1)
+        )
+        ver_result = await db.execute(ver_stmt)
+        recent_ver = ver_result.scalar_one_or_none()
+
+        if recent_ver:
+            if recent_ver.verification_status == VerificationStatus.REJECTED:
+                return {
+                    "in_queue": False, "status": "rejected", "queue_id": None,
+                    "queue_position": 0, "available_agents": 0,
+                    "verification_status": "rejected", "blockchain_tx_hash": None,
+                }
+            if recent_ver.verification_status == VerificationStatus.IN_REVIEW:
+                return {
+                    "in_queue": False, "status": "ai_reviewed", "queue_id": None,
+                    "queue_position": 0, "available_agents": 0,
+                }
+            if recent_ver.verification_status == VerificationStatus.PENDING:
+                # Fraud check is still running
+                return {
+                    "in_queue": False, "status": "fraud_check", "queue_id": None,
+                    "queue_position": 0, "available_agents": 0,
+                }
+
         return {"in_queue": False, "queue_position": 0, "queue_id": None}
 
     # If call is already completed, return the verification outcome + blockchain proof

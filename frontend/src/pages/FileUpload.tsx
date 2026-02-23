@@ -36,10 +36,7 @@ interface QueueStatus {
 
 interface UploadResult {
   verification_id: number;
-  queue_id: number;
-  queue_position: number;
-  available_agents: number;
-  status: string;
+  status: string;  // "fraud_check"
   message: string;
 }
 
@@ -94,6 +91,24 @@ export default function FileUpload() {
           if (pollRef.current) clearInterval(pollRef.current);
           ws.close();
           navigate(`/client/video-call/${msg.call_id}`);
+        } else if (msg.type === 'fraud_passed') {
+          // AI fraud check passed — now in the agent queue
+          setQueueStatus({
+            in_queue: true,
+            queue_id: msg.queue_id,
+            queue_position: 1,
+            available_agents: 0,
+            status: 'pending',
+          });
+          if (!pollRef.current) startPolling();
+        } else if (msg.type === 'fraud_failed') {
+          // AI fraud check failed — document rejected
+          if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+          setQueueStatus({
+            in_queue: false, queue_id: null, queue_position: 0, available_agents: 0,
+            status: 'rejected', verification_status: 'rejected',
+          });
+          toast({ title: 'Document Rejected', description: msg.reason || 'AI fraud analysis could not verify your document.', variant: 'destructive' });
         }
       } catch { /* ignore */ }
     };
@@ -119,14 +134,16 @@ export default function FileUpload() {
   const checkExistingQueue = async () => {
     try {
       const response = await apiClient.get<QueueStatus>('/api/v1/client/queue-status');
-      if (response.data.in_queue) {
-        // If already in_progress, go straight to video call
-        if (response.data.status === 'in_progress' && response.data.queue_id) {
-          navigate(`/client/video-call/${response.data.queue_id}`);
-          return;
-        }
-        setQueueStatus(response.data);
-        startPolling();
+      const data = response.data;
+      // Navigate immediately if the call is already live
+      if (data.status === 'in_progress' && data.queue_id) {
+        navigate(`/client/video-call/${data.queue_id}`);
+        return;
+      }
+      // Show fraud check / queue / rejected / ai-reviewed screens
+      if (data.status === 'fraud_check' || data.status === 'rejected' || data.status === 'ai_reviewed' || data.in_queue) {
+        setQueueStatus(data);
+        if (data.in_queue || data.status === 'fraud_check') startPolling();
       }
     } catch {
       // not in queue — proceed normally
@@ -208,16 +225,13 @@ export default function FileUpload() {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
+      // Fraud check is now running in the background — show waiting screen
       setQueueStatus({
-        in_queue: true,
-        queue_id: response.data.queue_id,
-        queue_position: response.data.queue_position,
-        available_agents: response.data.available_agents,
-        status: 'pending',
+        in_queue: false, queue_id: null, queue_position: 0, available_agents: 0,
+        status: 'fraud_check',
       });
-
       toast({ title: 'Document submitted', description: response.data.message });
-      startPolling();
+      startPolling();  // poll queue-status as fallback until WS delivers fraud result
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error?.message || 'Upload failed';
       toast({ title: 'Upload failed', description: detail, variant: 'destructive' });
@@ -233,6 +247,103 @@ export default function FileUpload() {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
+
+  // ── Fraud check in progress screen ────────────────────────────────────────
+  if (queueStatus?.status === 'fraud_check') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg text-center shadow-lg">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
+                <Shield className="h-8 w-8 text-blue-600 animate-pulse" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl">Analyzing your document</CardTitle>
+            <CardDescription>
+              Our AI system is verifying the authenticity of your document. This usually takes a few seconds.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              AI fraud analysis in progress…
+            </div>
+            <p className="text-xs text-gray-400">
+              Please keep this page open. You will be automatically placed in the agent queue if the analysis passes.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── Document rejected by AI fraud check ────────────────────────────────────
+  if (queueStatus?.status === 'rejected' && queueStatus.verification_status === 'rejected') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg text-center shadow-lg">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+                <XCircle className="h-8 w-8 text-red-600" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl text-red-700">Document Could Not Be Verified</CardTitle>
+            <CardDescription>
+              Our AI fraud detection system could not verify your document. Please upload a clearer photo or a different document.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button
+              className="w-full"
+              onClick={() => {
+                if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+                setQueueStatus(null);
+                setSelectedFile(null);
+                setPreview(null);
+                setSelectedBackFile(null);
+                setBackPreview(null);
+              }}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Upload a Different Document
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/client')}>
+              Back to Portal
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // ── AI reviewed — awaiting manager approval ────────────────────────────────
+  if (queueStatus?.status === 'ai_reviewed') {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-lg text-center shadow-lg">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 rounded-full bg-yellow-100 flex items-center justify-center">
+                <CheckCircle className="h-8 w-8 text-yellow-600" />
+              </div>
+            </div>
+            <CardTitle className="text-2xl">Under Review</CardTitle>
+            <CardDescription>
+              Your document has been reviewed by our AI system and is now awaiting final approval from our management team.
+              You will receive an email with the final decision.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button variant="outline" className="w-full" onClick={() => navigate('/client')}>
+              Back to Portal
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   // ── Verification complete screen ───────────────────────────────────────────
   if (queueStatus?.status === 'completed') {
@@ -424,9 +535,9 @@ export default function FileUpload() {
                 <p className="font-semibold">How verification works</p>
                 <ol className="list-decimal list-inside space-y-0.5 text-blue-700">
                   <li>Upload a clear photo of your identity document</li>
-                  <li>You are automatically placed in the agent queue</li>
-                  <li>The first available agent starts a video call with you</li>
-                  <li>The agent confirms your document is genuine</li>
+                  <li>Our AI runs an instant fraud analysis on your document</li>
+                  <li>If it passes, you are placed in the agent queue for a video call</li>
+                  <li>The agent confirms your identity and the result is anchored on the blockchain</li>
                 </ol>
               </div>
             </div>

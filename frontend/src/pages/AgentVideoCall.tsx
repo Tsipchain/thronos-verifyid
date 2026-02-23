@@ -144,17 +144,13 @@ export default function AgentVideoCall() {
     const init = async () => {
       if (!callId) return;
       try {
-        // Get call details via pending list (or direct lookup)
-        const res = await apiClient.get<CallDetails[]>('/api/v1/video-calls/pending');
-        // Include in-progress calls too
-        const allRes = await apiClient.get<CallDetails[]>('/api/v1/video-calls/active').catch(() => ({ data: [] }));
-        const allCalls = [...res.data, ...allRes.data];
-        const call = allCalls.find((c) => c.id === Number(callId));
-        if (call) {
-          setCallDetails(call);
+        // Fetch call details directly by ID (works for any status: pending, in_progress, stuck)
+        const callRes = await apiClient.get<CallDetails>(`/api/v1/video-calls/${callId}`).catch(() => null);
+        if (callRes) {
+          setCallDetails(callRes.data);
           // Load verification document
           const verRes = await apiClient.get<VerificationDetails>(
-            `/api/v1/verifications/${call.verification_id}`,
+            `/api/v1/verifications/${callRes.data.verification_id}`,
           ).catch(() => null);
           if (verRes) setVerification(verRes.data);
         }
