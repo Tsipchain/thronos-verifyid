@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     thronos_node1_url: str = "https://thrchain.up.railway.app"
     thronos_node2_url: str = "https://node-2.up.railway.app"
     thronos_cdn_url: str = "https://thrchain.vercel.app"
-    thronos_ai_core_url: str = "https://thronos-v3-6.onrender.com"
+    thronos_ai_core_url: str = "https://ai.thronoschain.org"
     thronos_admin_secret: str = ""
     thronos_ai_internal_key: str = ""  # Internal API key for AI Core integration
 

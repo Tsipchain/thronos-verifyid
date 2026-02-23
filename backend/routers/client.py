@@ -104,8 +104,8 @@ async def upload_document(
 
     except Exception as exc:
         await db.rollback()
-        logger.error("Failed to save document or create queue entry: %s", exc)
-        raise HTTPException(status_code=500, detail="Failed to save document. Please try again.")
+        logger.error("Failed to save document or create queue entry: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to save document: {exc}")
 
     # 3. Calculate current queue position (# of PENDING entries with id <= ours)
     pos_stmt = (

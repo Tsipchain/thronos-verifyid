@@ -78,56 +78,57 @@ async def _process_ai_review(
     """
     Background task: Run AI fraud analysis and auto-queue for video call if score is good.
     """
+    from core.database import db_manager
     try:
-        async with get_db() as db:
-            # 1. Update status to AI_REVIEW
+        async with db_manager.async_session_maker() as db:
+            # 1. Update status to IN_REVIEW
             stmt = select(DocumentVerifications).where(DocumentVerifications.id == verification_id)
             result = await db.execute(stmt)
             verification = result.scalar_one_or_none()
-            
+
             if not verification:
                 logger.error(f"Verification {verification_id} not found")
                 return
-            
-            verification.verification_status = VerificationStatus.AI_REVIEW
+
+            verification.verification_status = VerificationStatus.IN_REVIEW
             await db.commit()
-            
+
             # Notify client
             await client_manager.send_status_update(verification_id, {
                 "verification_id": verification_id,
-                "status": "ai_review"
+                "status": "in_review"
             })
-            
+
             # 2. Run AI fraud analysis
             logger.info(f"Running AI analysis for verification {verification_id}")
             ai_result = await AIHubService.analyze_document(
                 document_images=[front_image, back_image] if back_image else [front_image],
                 document_type=verification.document_type.value
             )
-            
+
             # 3. Update verification with AI results
             verification.fraud_score = ai_result.get("fraud_score", 0)
             verification.risk_level = ai_result.get("risk_level", "unknown")
-            
+
             # 4. Decide next step based on AI score
             fraud_score = ai_result.get("fraud_score", 0)
-            
+
             if fraud_score < 50:
                 # Auto-reject if fraud score is too low
                 verification.verification_status = VerificationStatus.REJECTED
                 logger.warning(f"Verification {verification_id} auto-rejected (fraud_score={fraud_score})")
-                
+
                 await client_manager.send_status_update(verification_id, {
                     "verification_id": verification_id,
                     "status": "rejected",
                     "ai_score": fraud_score,
                     "risk_level": ai_result.get("risk_level")
                 })
-                
+
             else:
-                # Queue for video call
-                verification.verification_status = VerificationStatus.IN_QUEUE
-                
+                # Queue for video call — keep PENDING status (handled by video call queue)
+                verification.verification_status = VerificationStatus.PENDING
+
                 # Create video call queue entry
                 call_queue = VideoCallQueue(
                     verification_id=verification_id,
@@ -135,23 +136,23 @@ async def _process_ai_review(
                     priority=CallPriority.HIGH if fraud_score < 70 else CallPriority.NORMAL
                 )
                 db.add(call_queue)
-                
+
                 logger.info(f"Verification {verification_id} queued for video call (fraud_score={fraud_score})")
-                
+
                 # Try auto-assign agent
                 await db.commit()
                 await VideoCallService.auto_assign_next_call(db)
-                
+
                 await client_manager.send_status_update(verification_id, {
                     "verification_id": verification_id,
-                    "status": "in_queue",
+                    "status": "pending",
                     "ai_score": fraud_score,
                     "risk_level": ai_result.get("risk_level"),
                     "estimated_wait_minutes": 5
                 })
-            
+
             await db.commit()
-            
+
     except Exception as e:
         logger.error(f"AI review failed for verification {verification_id}: {e}")
         # Don't fail the entire verification, just log
@@ -177,10 +178,9 @@ async def upload_verification(
             document_type=DocumentType(request.document_type),
             full_name=request.full_name,
             document_number=request.document_number,
-            date_of_birth=datetime.fromisoformat(request.date_of_birth),
+            date_of_birth=request.date_of_birth,
             nationality=request.nationality,
-            front_image=request.front_image,
-            back_image=request.back_image,
+            document_image_url=request.front_image,
             verification_status=VerificationStatus.PENDING,
             fraud_score=0
         )
@@ -231,7 +231,7 @@ async def get_verification_status(
         
         # Get queue position if in queue
         estimated_wait = None
-        if verification.verification_status == VerificationStatus.IN_QUEUE:
+        if verification.verification_status == VerificationStatus.PENDING:
             # Count pending calls ahead in queue
             queue_stmt = select(VideoCallQueue).where(
                 VideoCallQueue.verification_id == verification_id
