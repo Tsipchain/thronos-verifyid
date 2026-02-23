@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "service": "verifyid-ui",
+  "role": "frontend",
+  "version": "3.6",
+  "environment": "production",
+  "ts": 1771774716
+}
