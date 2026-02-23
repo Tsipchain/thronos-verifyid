@@ -26,6 +26,7 @@ interface VideoCallRequest {
   started_at: string | null;
   completed_at: string | null;
   wait_time_seconds: number;
+  client_online?: boolean;
 }
 
 interface AgentStatus {
@@ -130,7 +131,7 @@ export default function CallAgentDashboard() {
     
     websocket.onmessage = (event) => {
       const message = JSON.parse(event.data);
-      
+
       if (message.type === 'new_call') {
         toast({
           title: '🔔 New Call in Queue',
@@ -145,6 +146,13 @@ export default function CallAgentDashboard() {
         fetchPendingCalls();
       } else if (message.type === 'call_completed') {
         fetchPendingCalls();
+      } else if (message.type === 'client_disconnected') {
+        // Mark the matching pending call as offline immediately (no re-fetch needed)
+        setPendingCalls(prev =>
+          prev.map(c =>
+            c.customer_id === message.user_id ? { ...c, client_online: false } : c
+          )
+        );
       } else if (message.type === 'heartbeat_ack') {
         // Heartbeat acknowledged
       }
@@ -197,7 +205,17 @@ export default function CallAgentDashboard() {
     }
   };
 
-  const acceptCall = async (callId: number) => {
+  const acceptCall = async (callId: number, clientOnline?: boolean) => {
+    // Warn the agent if the client appears to have disconnected
+    if (clientOnline === false) {
+      const proceed = window.confirm(
+        'The client appears to be offline or may have closed the waiting page.\n' +
+        'You can still accept the call — the client may reconnect shortly.\n\n' +
+        'Continue?'
+      );
+      if (!proceed) return;
+    }
+
     try {
       // Assign call to current agent
       await apiClient.post(`/api/v1/video-calls/${callId}/assign`, { agent_id: currentUser.id });
@@ -305,53 +323,74 @@ export default function CallAgentDashboard() {
               </CardContent>
             </Card>
           ) : (
-            pendingCalls.map((call) => (
-              <Card key={call.id} className="hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        {getPriorityBadge(call.priority)}
-                        <span className="font-semibold text-lg">
-                          Customer ID: {call.customer_id}
-                        </span>
+            pendingCalls.map((call) => {
+              const isOnline = call.client_online !== false; // treat undefined as online
+              return (
+                <Card
+                  key={call.id}
+                  className={`hover:shadow-lg transition-shadow ${!isOnline ? 'opacity-70 border-dashed' : ''}`}
+                >
+                  <CardHeader>
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          {getPriorityBadge(call.priority)}
+                          {/* Client presence indicator */}
+                          {call.client_online === true && (
+                            <Badge className="bg-green-500 text-white text-xs">● Online</Badge>
+                          )}
+                          {call.client_online === false && (
+                            <Badge className="bg-red-500 text-white text-xs" title="Client has disconnected from the waiting page">
+                              ○ Offline
+                            </Badge>
+                          )}
+                          <span className="font-semibold text-lg">
+                            Customer ID: {call.customer_id}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          Verification ID: #{call.verification_id}
+                        </div>
+                        {call.client_online === false && (
+                          <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Client may have left the waiting screen
+                          </div>
+                        )}
                       </div>
-                      <div className="text-sm text-gray-500">
-                        Verification ID: #{call.verification_id}
+                      <Button
+                        onClick={() => acceptCall(call.id, call.client_online)}
+                        className={isOnline ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'}
+                      >
+                        <Video className="mr-2 h-4 w-4" />
+                        Accept Call
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-3 gap-4">
+                      <div>
+                        <div className="text-sm text-gray-500">Wait Time</div>
+                        <div className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {formatWaitTime(call.wait_time_seconds || 0)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-gray-500">Status</div>
+                        <div className="flex items-center gap-1">
+                          <Badge variant="outline">{call.status}</Badge>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-sm text-gray-500">Created</div>
+                        <div>{new Date(call.created_at).toLocaleTimeString()}</div>
                       </div>
                     </div>
-                    <Button 
-                      onClick={() => acceptCall(call.id)}
-                      className="bg-blue-500 hover:bg-blue-600"
-                    >
-                      <Video className="mr-2 h-4 w-4" />
-                      Accept Call
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <div className="text-sm text-gray-500">Wait Time</div>
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {formatWaitTime(call.wait_time_seconds || 0)}
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-500">Status</div>
-                      <div className="flex items-center gap-1">
-                        <Badge variant="outline">{call.status}</Badge>
-                      </div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-500">Created</div>
-                      <div>{new Date(call.created_at).toLocaleTimeString()}</div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
+                  </CardContent>
+                </Card>
+              );
+            })
           )}
         </TabsContent>
 
