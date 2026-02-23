@@ -129,7 +129,14 @@ async def _chat_via_thronos_core(messages: list[dict], model: str, temperature: 
     """Try Thronos AI Core. Returns response text or None on failure."""
     if not settings.thronos_ai_core_url:
         return None
-    headers = {"X-Admin-Secret": settings.thronos_admin_secret} if settings.thronos_admin_secret else {}
+
+    headers: dict[str, str] = {}
+    if settings.thronos_admin_secret:
+        headers["X-Admin-Secret"] = settings.thronos_admin_secret
+
+    # Identify VerifyID app to AI Core so it can apply app-specific profiles
+    headers["X-Thronos-App"] = "verifyid"
+
     payload = {"model": model, "messages": messages, "temperature": temperature}
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
