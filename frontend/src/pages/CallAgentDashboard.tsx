@@ -27,6 +27,7 @@ interface VideoCallRequest {
   completed_at: string | null;
   wait_time_seconds: number;
   client_online?: boolean;
+  is_stuck?: boolean;
 }
 
 interface AgentStatus {
@@ -324,22 +325,32 @@ export default function CallAgentDashboard() {
             </Card>
           ) : (
             pendingCalls.map((call) => {
-              const isOnline = call.client_online !== false; // treat undefined as online
+              const isOnline = call.client_online !== false;
+              const isStuck = call.is_stuck === true;
               return (
                 <Card
                   key={call.id}
-                  className={`hover:shadow-lg transition-shadow ${!isOnline ? 'opacity-70 border-dashed' : ''}`}
+                  className={`hover:shadow-lg transition-shadow ${
+                    isStuck
+                      ? 'border-orange-400 bg-orange-50'
+                      : !isOnline
+                        ? 'opacity-70 border-dashed'
+                        : ''
+                  }`}
                 >
                   <CardHeader>
                     <div className="flex justify-between items-start">
                       <div>
                         <div className="flex items-center gap-2 mb-2">
-                          {getPriorityBadge(call.priority)}
-                          {/* Client presence indicator */}
-                          {call.client_online === true && (
+                          {isStuck ? (
+                            <Badge className="bg-orange-500 text-white text-xs">⚠ Stuck Call</Badge>
+                          ) : (
+                            getPriorityBadge(call.priority)
+                          )}
+                          {!isStuck && call.client_online === true && (
                             <Badge className="bg-green-500 text-white text-xs">● Online</Badge>
                           )}
-                          {call.client_online === false && (
+                          {!isStuck && call.client_online === false && (
                             <Badge className="bg-red-500 text-white text-xs" title="Client has disconnected from the waiting page">
                               ○ Offline
                             </Badge>
@@ -351,20 +362,36 @@ export default function CallAgentDashboard() {
                         <div className="text-sm text-gray-500">
                           Verification ID: #{call.verification_id}
                         </div>
-                        {call.client_online === false && (
+                        {isStuck && (
+                          <div className="text-xs text-orange-600 mt-1 flex items-center gap-1">
+                            <AlertTriangle className="h-3 w-3" />
+                            Call started but was never completed — resume to close it
+                          </div>
+                        )}
+                        {!isStuck && call.client_online === false && (
                           <div className="text-xs text-red-500 mt-1 flex items-center gap-1">
                             <AlertTriangle className="h-3 w-3" />
                             Client may have left the waiting screen
                           </div>
                         )}
                       </div>
-                      <Button
-                        onClick={() => acceptCall(call.id, call.client_online)}
-                        className={isOnline ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'}
-                      >
-                        <Video className="mr-2 h-4 w-4" />
-                        Accept Call
-                      </Button>
+                      {isStuck ? (
+                        <Button
+                          onClick={() => navigate(`/agent/video-call/${call.id}`)}
+                          className="bg-orange-500 hover:bg-orange-600"
+                        >
+                          <Video className="mr-2 h-4 w-4" />
+                          Resume
+                        </Button>
+                      ) : (
+                        <Button
+                          onClick={() => acceptCall(call.id, call.client_online)}
+                          className={isOnline ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-500 hover:bg-gray-600'}
+                        >
+                          <Video className="mr-2 h-4 w-4" />
+                          Accept Call
+                        </Button>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent>

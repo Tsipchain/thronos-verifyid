@@ -166,6 +166,7 @@ class CallResponse(BaseModel):
     completed_at: Optional[datetime]
     wait_time_seconds: Optional[int] = None
     client_online: Optional[bool] = None  # True if client's WebSocket is currently connected
+    is_stuck: bool = False  # True for IN_PROGRESS calls that have no completed_at (stuck)
 
 
 class AgentResponse(BaseModel):
@@ -235,8 +236,19 @@ async def get_pending_calls(
 
         calls = await VideoCallService.get_pending_calls(db)
 
-        return [
-            CallResponse(
+        # Also include stuck IN_PROGRESS calls (agent disconnected without completing)
+        stuck_stmt = (
+            select(VideoCallQueue)
+            .where(
+                VideoCallQueue.status == CallStatus.IN_PROGRESS,
+                VideoCallQueue.completed_at == None,  # noqa: E711
+            )
+        )
+        stuck_result = await db.execute(stuck_stmt)
+        stuck_calls = stuck_result.scalars().all()
+
+        def _to_response(call: VideoCallQueue, stuck: bool = False) -> CallResponse:
+            return CallResponse(
                 id=call.id,
                 verification_id=call.verification_id,
                 customer_id=call.customer_id,
@@ -249,15 +261,48 @@ async def get_pending_calls(
                 completed_at=call.completed_at,
                 wait_time_seconds=int((datetime.now() - call.created_at).total_seconds()),
                 client_online=call.customer_id in manager.active_connections,
+                is_stuck=stuck,
             )
-            for call in calls
-        ]
+
+        return (
+            [_to_response(c) for c in calls]
+            + [_to_response(c, stuck=True) for c in stuck_calls]
+        )
 
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error getting pending calls: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{call_id}", response_model=CallResponse)
+async def get_call(
+    call_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch a single video call queue entry by ID (any status)."""
+    stmt = select(VideoCallQueue).where(VideoCallQueue.id == call_id)
+    result = await db.execute(stmt)
+    call = result.scalar_one_or_none()
+    if not call:
+        raise HTTPException(status_code=404, detail=f"Call {call_id} not found")
+    return CallResponse(
+        id=call.id,
+        verification_id=call.verification_id,
+        customer_id=call.customer_id,
+        agent_id=call.agent_id,
+        priority=call.priority.value,
+        status=call.status.value,
+        created_at=call.created_at,
+        assigned_at=call.assigned_at,
+        started_at=call.started_at,
+        completed_at=call.completed_at,
+        wait_time_seconds=int((datetime.now() - call.created_at).total_seconds()),
+        client_online=call.customer_id in manager.active_connections,
+        is_stuck=call.status == CallStatus.IN_PROGRESS and call.completed_at is None,
+    )
 
 
 @router.post("/{call_id}/assign", response_model=CallResponse)
