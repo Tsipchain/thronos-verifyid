@@ -168,9 +168,8 @@ export default function CallAgentDashboard() {
       if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: 'heartbeat' }));
       }
-      
-      // Update agent status
-      await updateAgentStatus(agentStatus);
+      // Always send 'online' — agent is active while this dashboard is open
+      await updateAgentStatus('online');
     }, 30000); // Every 30 seconds
   };
 
@@ -202,20 +201,15 @@ export default function CallAgentDashboard() {
     try {
       // Assign call to current agent
       await apiClient.post(`/api/v1/video-calls/${callId}/assign`, { agent_id: currentUser.id });
-      
+
       // Start the call
       await apiClient.post(`/api/v1/video-calls/${callId}/start`);
-      
-      toast({
-        title: 'Call Started',
-        description: 'Video call interface will open',
-      });
-      
+
       // Refresh pending calls
       await fetchPendingCalls();
-      
-      // In a real implementation, open video call interface
-      // window.open(`/video-call/${callId}`, '_blank');
+
+      // Open the video call interface
+      navigate(`/agent/video-call/${callId}`);
     } catch (error: any) {
       const detail = error?.response?.data?.detail || error.message;
       toast({

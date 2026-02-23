@@ -53,11 +53,14 @@ const ALLOWED_TYPES = {
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 const DOCUMENT_TYPES = [
-  { value: 'national_id', label: 'National ID Card' },
-  { value: 'passport', label: 'Passport' },
-  { value: 'drivers_license', label: "Driver's License" },
-  { value: 'residence_permit', label: 'Residence Permit' },
+  { value: 'national_id', label: 'National ID Card', sides: 2 },
+  { value: 'passport', label: 'Passport', sides: 1 },
+  { value: 'drivers_license', label: "Driver's License", sides: 2 },
+  { value: 'residence_permit', label: 'Residence Permit', sides: 1 },
 ];
+
+// Document types that require both front and back
+const TWO_SIDED = new Set(['national_id', 'drivers_license']);
 
 export default function FileUpload() {
   const navigate = useNavigate();
@@ -65,10 +68,13 @@ export default function FileUpload() {
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [selectedBackFile, setSelectedBackFile] = useState<File | null>(null);
+  const [backPreview, setBackPreview] = useState<string | null>(null);
   const [documentType, setDocumentType] = useState('national_id');
   const [uploading, setUploading] = useState(false);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const needsBack = TWO_SIDED.has(documentType);
 
   useEffect(() => {
     const ensureAuth = async () => {
@@ -111,39 +117,44 @@ export default function FileUpload() {
     }, 10000);
   };
 
-  const onDrop = useCallback(
-    (acceptedFiles: File[]) => {
-      const file = acceptedFiles[0];
-      if (!file) return;
-
-      if (file.size > MAX_FILE_SIZE) {
-        toast({ title: 'File too large', description: 'Maximum size is 10 MB.', variant: 'destructive' });
-        return;
-      }
-
-      setSelectedFile(file);
-
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onloadend = () => setPreview(reader.result as string);
-        reader.readAsDataURL(file);
-      } else {
-        setPreview(null);
-      }
-    },
+  const makeOnDrop = useCallback(
+    (side: 'front' | 'back') =>
+      (acceptedFiles: File[]) => {
+        const file = acceptedFiles[0];
+        if (!file) return;
+        if (file.size > MAX_FILE_SIZE) {
+          toast({ title: 'File too large', description: 'Maximum size is 10 MB.', variant: 'destructive' });
+          return;
+        }
+        if (side === 'front') {
+          setSelectedFile(file);
+          if (file.type.startsWith('image/')) {
+            const r = new FileReader();
+            r.onloadend = () => setPreview(r.result as string);
+            r.readAsDataURL(file);
+          } else setPreview(null);
+        } else {
+          setSelectedBackFile(file);
+          if (file.type.startsWith('image/')) {
+            const r = new FileReader();
+            r.onloadend = () => setBackPreview(r.result as string);
+            r.readAsDataURL(file);
+          } else setBackPreview(null);
+        }
+      },
     [toast],
   );
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop,
-    accept: ALLOWED_TYPES,
-    maxSize: MAX_FILE_SIZE,
-    multiple: false,
-  });
+  const frontDropzone = useDropzone({ onDrop: makeOnDrop('front'), accept: ALLOWED_TYPES, maxSize: MAX_FILE_SIZE, multiple: false });
+  const backDropzone  = useDropzone({ onDrop: makeOnDrop('back'),  accept: ALLOWED_TYPES, maxSize: MAX_FILE_SIZE, multiple: false });
 
   const handleSubmit = async () => {
     if (!selectedFile) {
-      toast({ title: 'No file selected', description: 'Please choose a document first.', variant: 'destructive' });
+      toast({ title: 'No file selected', description: 'Please upload the front of your document.', variant: 'destructive' });
+      return;
+    }
+    if (needsBack && !selectedBackFile) {
+      toast({ title: 'Back side required', description: 'Please upload both front and back of your document.', variant: 'destructive' });
       return;
     }
 
@@ -151,6 +162,7 @@ export default function FileUpload() {
     try {
       const formData = new FormData();
       formData.append('file', selectedFile);
+      if (selectedBackFile) formData.append('back_file', selectedBackFile);
       formData.append('document_type', documentType);
       formData.append('priority', 'normal');
 
@@ -408,86 +420,120 @@ export default function FileUpload() {
           </CardContent>
         </Card>
 
-        {/* Drop zone */}
+        {/* Drop zones */}
         <Card>
           <CardHeader>
             <CardTitle>Upload Document</CardTitle>
-            <CardDescription>JPG, PNG, WebP or PDF — max 10 MB.</CardDescription>
+            <CardDescription>
+              JPG, PNG, WebP or PDF — max 10 MB.
+              {needsBack && ' Both sides required for this document type.'}
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            {!selectedFile ? (
-              <div
-                {...getRootProps()}
-                className={`border-2 border-dashed rounded-lg p-12 text-center cursor-pointer transition-colors ${
-                  isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
-                }`}
-              >
-                <input {...getInputProps()} />
-                <Upload className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                {isDragActive ? (
-                  <p className="text-lg font-medium text-blue-600">Drop the file here…</p>
+          <CardContent className="space-y-6">
+
+            {/* ── Front side ── */}
+            <div>
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                {needsBack ? 'Front side' : 'Document'}
+              </p>
+              {!selectedFile ? (
+                <div
+                  {...frontDropzone.getRootProps()}
+                  className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
+                    frontDropzone.isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                  }`}
+                >
+                  <input {...frontDropzone.getInputProps()} />
+                  <Upload className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+                  {frontDropzone.isDragActive ? (
+                    <p className="text-base font-medium text-blue-600">Drop here…</p>
+                  ) : (
+                    <>
+                      <p className="text-base font-medium text-gray-700">
+                        Drag &amp; drop or <span className="text-blue-600">click to select</span>
+                      </p>
+                      <p className="text-sm text-gray-500 mt-1">All corners visible, text readable</p>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="border rounded-lg p-3 space-y-2">
+                  {preview ? (
+                    <img src={preview} alt="Front" className="w-full max-h-56 object-contain rounded" />
+                  ) : (
+                    <div className="flex items-center gap-3 p-3 bg-gray-50 rounded">
+                      <FileText className="h-8 w-8 text-gray-500" />
+                      <span className="font-medium text-gray-700 text-sm">{selectedFile.name}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs text-gray-500 px-1">
+                    <span>{selectedFile.name}</span>
+                    <span>{formatFileSize(selectedFile.size)}</span>
+                  </div>
+                  <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 w-full"
+                    onClick={() => { setSelectedFile(null); setPreview(null); }}>
+                    <X className="h-4 w-4 mr-2" />Remove
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {/* ── Back side (only for 2-sided docs) ── */}
+            {needsBack && (
+              <div>
+                <p className="text-sm font-medium text-gray-700 mb-2">Back side</p>
+                {!selectedBackFile ? (
+                  <div
+                    {...backDropzone.getRootProps()}
+                    className={`border-2 border-dashed rounded-lg p-10 text-center cursor-pointer transition-colors ${
+                      backDropzone.isDragActive ? 'border-blue-500 bg-blue-50' : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    <input {...backDropzone.getInputProps()} />
+                    <Upload className="h-10 w-10 mx-auto mb-3 text-gray-400" />
+                    {backDropzone.isDragActive ? (
+                      <p className="text-base font-medium text-blue-600">Drop here…</p>
+                    ) : (
+                      <>
+                        <p className="text-base font-medium text-gray-700">
+                          Drag &amp; drop or <span className="text-blue-600">click to select</span>
+                        </p>
+                        <p className="text-sm text-gray-500 mt-1">Back of document</p>
+                      </>
+                    )}
+                  </div>
                 ) : (
-                  <>
-                    <p className="text-lg font-medium text-gray-700 mb-2">
-                      Drag &amp; drop or{' '}
-                      <span className="text-blue-600">click to select</span>
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      Make sure all corners are visible and the text is readable
-                    </p>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="border rounded-lg p-4 space-y-3">
-                {preview ? (
-                  <img
-                    src={preview}
-                    alt="Document preview"
-                    className="w-full max-h-64 object-contain rounded"
-                  />
-                ) : (
-                  <div className="flex items-center gap-3 p-4 bg-gray-50 rounded">
-                    {FileIcon && <FileIcon className="h-10 w-10 text-gray-500" />}
-                    <span className="font-medium text-gray-700">{selectedFile.name}</span>
+                  <div className="border rounded-lg p-3 space-y-2">
+                    {backPreview ? (
+                      <img src={backPreview} alt="Back" className="w-full max-h-56 object-contain rounded" />
+                    ) : (
+                      <div className="flex items-center gap-3 p-3 bg-gray-50 rounded">
+                        <FileText className="h-8 w-8 text-gray-500" />
+                        <span className="font-medium text-gray-700 text-sm">{selectedBackFile.name}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-xs text-gray-500 px-1">
+                      <span>{selectedBackFile.name}</span>
+                      <span>{formatFileSize(selectedBackFile.size)}</span>
+                    </div>
+                    <Button variant="ghost" size="sm" className="text-red-600 hover:bg-red-50 w-full"
+                      onClick={() => { setSelectedBackFile(null); setBackPreview(null); }}>
+                      <X className="h-4 w-4 mr-2" />Remove
+                    </Button>
                   </div>
                 )}
-
-                <div className="flex items-center justify-between text-sm text-gray-600 px-1">
-                  <span>{selectedFile.name}</span>
-                  <span>{formatFileSize(selectedFile.size)}</span>
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-red-600 hover:bg-red-50 w-full"
-                  onClick={() => {
-                    setSelectedFile(null);
-                    setPreview(null);
-                  }}
-                >
-                  <X className="h-4 w-4 mr-2" />
-                  Remove and choose another
-                </Button>
               </div>
             )}
 
             <Button
               className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              disabled={!selectedFile || uploading}
+              disabled={!selectedFile || (needsBack && !selectedBackFile) || uploading}
               onClick={handleSubmit}
             >
               {uploading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Uploading…
-                </>
+                <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Uploading…</>
               ) : (
-                <>
-                  <Upload className="h-4 w-4 mr-2" />
-                  Submit Document &amp; Enter Queue
-                </>
+                <><Upload className="h-4 w-4 mr-2" />Submit Document &amp; Enter Queue</>
               )}
             </Button>
           </CardContent>

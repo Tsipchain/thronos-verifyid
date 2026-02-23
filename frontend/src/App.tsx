@@ -18,6 +18,7 @@ import PerformanceDashboard from './pages/PerformanceDashboard';
 import UsersPage from './pages/Users';
 import SettingsPage from './pages/Settings';
 import Credits from './pages/Credits';
+import AgentVideoCall from './pages/AgentVideoCall';
 
 const queryClient = new QueryClient();
 
@@ -61,6 +62,7 @@ const App = () => {
             <Route path="/manager/*" element={<Dashboard />} />
             <Route path="/dashboard/*" element={<DashboardRedirect />} />
             
+            <Route path="/agent/video-call/:callId" element={<AgentVideoCall />} />
             <Route path="/agent/*" element={<CallAgentDashboard />} />
             <Route path="/client/*" element={<ClientPortal />} />
             <Route path="/client/upload" element={<FileUpload />} />
