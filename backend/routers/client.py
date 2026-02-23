@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,10 +14,55 @@ from models.blockchain_transactions import BlockchainTransactions, BlockchainSta
 from models.verifications import DocumentType, DocumentVerifications, VerificationStatus
 from models.video_call_queue import CallPriority, CallStatus, VideoCallQueue
 from schemas.auth import UserResponse
+from services.aihub_client import AIHubClient
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/client", tags=["client"])
+
+
+async def _run_fraud_check(verification_id: int, document_type: str) -> None:
+    """Background task: run AI fraud analysis and update the verification record."""
+    from core.database import db_manager
+    from sqlalchemy import select as _select
+    try:
+        async with db_manager.async_session_maker() as db:
+            stmt = _select(DocumentVerifications).where(DocumentVerifications.id == verification_id)
+            result = await db.execute(stmt)
+            verification = result.scalar_one_or_none()
+            if not verification:
+                return
+
+            ai_result = await AIHubClient.analyze_document({
+                "document_type": document_type,
+                "verification_id": verification_id,
+            })
+
+            fraud_score = ai_result.get("fraud_score", 50)
+            risk_level = ai_result.get("risk_level", "medium")
+
+            verification.fraud_score = fraud_score
+            verification.risk_level = risk_level
+
+            if fraud_score < 30:
+                # Very low score → auto-reject, remove from queue
+                verification.verification_status = VerificationStatus.REJECTED
+                queue_stmt = _select(VideoCallQueue).where(
+                    VideoCallQueue.verification_id == verification_id,
+                    VideoCallQueue.status == CallStatus.PENDING,
+                )
+                q_result = await db.execute(queue_stmt)
+                queue_entry = q_result.scalar_one_or_none()
+                if queue_entry:
+                    queue_entry.status = CallStatus.CANCELLED
+
+            await db.commit()
+            logger.info(
+                "Fraud check complete for verification %d: score=%d risk=%s",
+                verification_id, fraud_score, risk_level,
+            )
+    except Exception as exc:
+        logger.error("Fraud check failed for verification %d: %s", verification_id, exc)
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -46,6 +91,7 @@ PRIORITY_MAP = {
 
 @router.post("/upload-document")
 async def upload_document(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     back_file: UploadFile = File(default=None),
     document_type: str = Form(default="national_id"),
@@ -113,6 +159,9 @@ async def upload_document(
         await db.commit()
         await db.refresh(verification)
         await db.refresh(queue_entry)
+
+        # Kick off AI fraud analysis in the background (non-blocking)
+        background_tasks.add_task(_run_fraud_check, verification.id, document_type)
 
     except Exception as exc:
         await db.rollback()

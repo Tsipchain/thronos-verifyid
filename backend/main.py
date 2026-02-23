@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import logging
 import os
@@ -14,6 +15,7 @@ from fastapi.routing import APIRouter
 from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
+from services.queue_monitor import run_queue_monitor
 # MODULE_IMPORTS_END
 
 
@@ -70,8 +72,19 @@ async def lifespan(app: FastAPI):
     await initialize_admin_user()
     # MODULE_STARTUP_END
 
+    # Start the background queue monitor (AI agent fallback after 15 min)
+    _monitor_task = asyncio.create_task(run_queue_monitor())
+
     logger.info("=== Application startup completed successfully ===")
     yield
+
+    # Graceful shutdown: cancel the monitor task
+    _monitor_task.cancel()
+    try:
+        await _monitor_task
+    except asyncio.CancelledError:
+        pass
+
     # MODULE_SHUTDOWN_START
     await close_database()
     # MODULE_SHUTDOWN_END
