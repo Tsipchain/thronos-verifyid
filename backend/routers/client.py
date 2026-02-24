@@ -41,6 +41,21 @@ async def _run_fraud_check(verification_id: int, document_type: str, priority: s
             risk_level = ai_result.get("risk_level", "medium")
             verification.fraud_score = fraud_score
             verification.risk_level = risk_level
+
+            # Persist audit entry into extracted_data.review_history
+            try:
+                existing_data: dict = json.loads(verification.extracted_data or "{}")
+            except Exception:
+                existing_data = {}
+            existing_data.setdefault("review_history", []).append({
+                "source": "ai_fraud_check",
+                "fraud_score": fraud_score,
+                "risk_level": risk_level,
+                "flags": ai_result.get("flags", []),
+                "explanation": ai_result.get("explanation", ""),
+                "checked_at": datetime.now().isoformat(),
+            })
+            verification.extracted_data = json.dumps(existing_data)
             await db.commit()
 
             if fraud_score >= 30:
