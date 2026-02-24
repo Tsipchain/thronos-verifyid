@@ -20,6 +20,8 @@ import SettingsPage from './pages/Settings';
 import Credits from './pages/Credits';
 import AgentVideoCall from './pages/AgentVideoCall';
 import ClientVideoCall from './pages/ClientVideoCall';
+import DriverVerification from './pages/DriverVerification';
+import DriverVerifications from './pages/DriverVerifications';
 
 const queryClient = new QueryClient();
 
@@ -54,6 +56,7 @@ const App = () => {
             <Route path="/register" element={<Register />} />
             
             <Route path="/admin/verifications" element={<Verifications />} />
+            <Route path="/admin/driver-verifications" element={<DriverVerifications />} />
             <Route path="/admin/chat" element={<Chat />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/reports" element={<PerformanceDashboard />} />
@@ -66,6 +69,7 @@ const App = () => {
             <Route path="/agent/video-call/:callId" element={<AgentVideoCall />} />
             <Route path="/agent/*" element={<CallAgentDashboard />} />
             <Route path="/client/video-call/:callId" element={<ClientVideoCall />} />
+            <Route path="/driver/verify" element={<DriverVerification />} />
             <Route path="/client/upload" element={<FileUpload />} />
             <Route path="/client/*" element={<ClientPortal />} />
             <Route path="/chat" element={<Chat />} />
