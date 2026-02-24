@@ -88,7 +88,10 @@ class OrgOut(BaseModel):
     plan_limits: Dict[str, Any]
     verifications_this_month: int
     verifications_total: int
+    # widget_api_key is only exposed once plan_status == "active" (i.e. payment confirmed).
+    # While pending/trialing the field contains the placeholder "PENDING_PAYMENT".
     widget_api_key: str
+    key_is_live: bool          # True only when the organisation has an active paid subscription
     widget_allowed_origins: Optional[List[str]]
     custom_branding: Optional[Dict[str, Any]]
     admin_notes: Optional[str]
@@ -101,12 +104,18 @@ class OrgOut(BaseModel):
         from_attributes = True
 
 
+def _key_is_live(org: Organization) -> bool:
+    """Return True only when the subscription is fully paid and active."""
+    return org.plan_status == "active"
+
+
 def _to_out(org: Organization) -> OrgOut:
     plan_key = ServicePlan(org.plan) if org.plan in ServicePlan._value2member_map_ else ServicePlan.STARTER
     origins_raw = org.widget_allowed_origins
     origins = json.loads(origins_raw) if origins_raw else None
     branding_raw = org.custom_branding
     branding = json.loads(branding_raw) if branding_raw else None
+    live = _key_is_live(org)
     return OrgOut(
         id=org.id,
         name=org.name,
@@ -121,7 +130,9 @@ def _to_out(org: Organization) -> OrgOut:
         plan_limits=PLAN_LIMITS[plan_key],
         verifications_this_month=org.verifications_this_month,
         verifications_total=org.verifications_total,
-        widget_api_key=org.widget_api_key,
+        # Mask the real key until payment is confirmed
+        widget_api_key=org.widget_api_key if live else "PENDING_PAYMENT",
+        key_is_live=live,
         widget_allowed_origins=origins,
         custom_branding=branding,
         admin_notes=org.admin_notes,
@@ -322,6 +333,41 @@ async def activate_organization(
     return _to_out(org)
 
 
+@router.post("/{org_id}/confirm-payment", response_model=OrgOut)
+async def confirm_payment(
+    org_id: str,
+    current_user: UserResponse = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin confirms that payment has been received for the organisation's
+    subscription.  This sets plan_status → 'active' and status → 'active',
+    which makes the widget API key live and accessible.
+
+    Thronos Chain employees do NOT need this — they access the platform via
+    user roles (admin / manager / agent) and have no subscription requirement.
+    """
+    stmt = select(Organization).where(Organization.id == org_id)
+    result = await db.execute(stmt)
+    org = result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisation not found")
+    if org.plan_status == "active":
+        raise HTTPException(status_code=400, detail="Subscription is already active.")
+
+    org.status = OrgStatus.ACTIVE
+    org.plan_status = "active"
+    org.suspended_at = None
+    org.updated_at = datetime.utcnow()
+    await db.commit()
+    await db.refresh(org)
+    logger.info(
+        "Admin %s confirmed payment for org %s — widget API key is now live",
+        current_user.id, org_id,
+    )
+    return _to_out(org)
+
+
 @router.post("/{org_id}/api-key/rotate")
 async def rotate_api_key(
     org_id: str,
@@ -368,12 +414,20 @@ async def get_widget_snippet(
     current_user: UserResponse = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Return the JavaScript embed snippet for the organisation's widget."""
+    """
+    Return the JavaScript embed snippet for the organisation's widget.
+    Only available after payment is confirmed (plan_status == 'active').
+    """
     stmt = select(Organization).where(Organization.id == org_id)
     result = await db.execute(stmt)
     org = result.scalar_one_or_none()
     if not org:
         raise HTTPException(status_code=404, detail="Organisation not found")
+    if not _key_is_live(org):
+        raise HTTPException(
+            status_code=402,
+            detail="Widget API key is not yet live. Confirm payment first.",
+        )
 
     snippet = (
         f'<!-- DriverIntelligent Verification Widget -->\n'
@@ -415,6 +469,11 @@ async def widget_config(
         raise HTTPException(status_code=401, detail="Invalid widget API key")
     if org.status == OrgStatus.SUSPENDED:
         raise HTTPException(status_code=403, detail="Organisation subscription is suspended")
+    if not _key_is_live(org):
+        raise HTTPException(
+            status_code=402,
+            detail="Subscription payment not yet confirmed. Widget access is locked until payment is received.",
+        )
 
     branding = json.loads(org.custom_branding) if org.custom_branding else {}
     plan_key = ServicePlan(org.plan) if org.plan in ServicePlan._value2member_map_ else ServicePlan.STARTER

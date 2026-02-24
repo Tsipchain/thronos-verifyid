@@ -37,13 +37,15 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
-  Edit,
   Power,
   PowerOff,
   Code,
   TrendingUp,
   Zap,
   Star,
+  Lock,
+  CreditCard,
+  Info,
 } from 'lucide-react';
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -68,7 +70,10 @@ interface Organization {
   plan_limits: PlanLimits;
   verifications_this_month: number;
   verifications_total: number;
+  /** "PENDING_PAYMENT" when subscription not yet paid; real key once active */
   widget_api_key: string;
+  /** true only after payment confirmed (plan_status == "active") */
+  key_is_live: boolean;
   widget_allowed_origins: string[] | null;
   custom_branding: Record<string, string> | null;
   admin_notes: string | null;
@@ -158,20 +163,24 @@ function UsageBar({ used, limit }: { used: number; limit: number }) {
 
 function SnippetModal({
   orgId,
+  keyIsLive,
   onClose,
 }: {
   orgId: string;
+  keyIsLive: boolean;
   onClose: () => void;
 }) {
   const { toast } = useToast();
   const [data, setData] = useState<{ snippet: string; iframe_url: string; api_key: string } | null>(null);
+  const [blocked, setBlocked] = useState(!keyIsLive);
 
   useEffect(() => {
+    if (!keyIsLive) return;
     apiClient
       .get(`/api/v1/organizations/${orgId}/widget-snippet`)
       .then(r => setData(r.data))
-      .catch(() => {});
-  }, [orgId]);
+      .catch(() => setBlocked(true));
+  }, [orgId, keyIsLive]);
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -193,7 +202,18 @@ function SnippetModal({
           <button className="text-gray-400 hover:text-gray-600 text-xl" onClick={onClose}>✕</button>
         </div>
 
-        {!data ? (
+        {blocked ? (
+          <div className="flex flex-col items-center gap-3 py-10 text-center">
+            <div className="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center">
+              <Lock className="h-7 w-7 text-yellow-600" />
+            </div>
+            <p className="font-semibold text-gray-900">Widget locked — payment not yet confirmed</p>
+            <p className="text-sm text-gray-500 max-w-sm">
+              Confirm the organisation's payment first. The widget API key and embed code will be
+              revealed automatically once the subscription is active.
+            </p>
+          </div>
+        ) : !data ? (
           <div className="flex justify-center py-8">
             <RefreshCw className="h-6 w-6 animate-spin text-blue-600" />
           </div>
@@ -450,7 +470,13 @@ function OrgCard({
 
   return (
     <>
-      {snippetOpen && <SnippetModal orgId={org.id} onClose={() => setSnippetOpen(false)} />}
+      {snippetOpen && (
+        <SnippetModal
+          orgId={org.id}
+          keyIsLive={org.key_is_live}
+          onClose={() => setSnippetOpen(false)}
+        />
+      )}
 
       <Card className={`hover:shadow-md transition-shadow ${org.status === 'suspended' ? 'opacity-60 border-red-200' : ''}`}>
         <CardHeader className="pb-2">
@@ -473,7 +499,12 @@ function OrgCard({
                     <PlanIcon className="h-3 w-3" />
                     {planCfg.label}
                   </span>
-                  {usagePct >= 80 && (
+                  {!org.key_is_live && (
+                    <Badge className="bg-yellow-100 text-yellow-800 text-xs gap-1 border border-yellow-300">
+                      <Lock className="h-3 w-3" /> Awaiting Payment
+                    </Badge>
+                  )}
+                  {usagePct >= 80 && org.key_is_live && (
                     <Badge className="bg-orange-100 text-orange-700 text-xs gap-1">
                       <AlertTriangle className="h-3 w-3" /> {usagePct}% usage
                     </Badge>
@@ -489,8 +520,17 @@ function OrgCard({
 
             {/* Action buttons */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Button size="sm" variant="outline" onClick={() => setSnippetOpen(true)}>
-                <Code className="h-3 w-3 mr-1" /> Embed
+              <Button
+                size="sm"
+                variant={org.key_is_live ? 'outline' : 'ghost'}
+                className={org.key_is_live ? '' : 'text-gray-400 cursor-not-allowed'}
+                onClick={() => setSnippetOpen(true)}
+                title={org.key_is_live ? 'Get embed snippet' : 'Locked until payment confirmed'}
+              >
+                {org.key_is_live
+                  ? <><Code className="h-3 w-3 mr-1" /> Embed</>
+                  : <><Lock className="h-3 w-3 mr-1" /> Locked</>
+                }
               </Button>
               <Button
                 size="sm"
@@ -534,17 +574,21 @@ function OrgCard({
           )}
 
           {/* API key row */}
-          <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-2">
-            <Key className="h-3 w-3 text-gray-400 flex-shrink-0" />
-            <code className="font-mono flex-1 truncate">{org.widget_api_key}</code>
-            <button
-              className="hover:text-gray-700 flex-shrink-0"
-              onClick={copyKey}
-              title="Copy API key"
-            >
-              <Copy className="h-3 w-3" />
-            </button>
-          </div>
+          {org.key_is_live ? (
+            <div className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded-lg px-3 py-2 mb-2">
+              <Key className="h-3 w-3 text-green-500 flex-shrink-0" />
+              <code className="font-mono flex-1 truncate">{org.widget_api_key}</code>
+              <button className="hover:text-gray-700 flex-shrink-0" onClick={copyKey} title="Copy API key">
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-xs bg-yellow-50 border border-yellow-200 rounded-lg px-3 py-2 mb-2">
+              <Lock className="h-3 w-3 text-yellow-500 flex-shrink-0" />
+              <code className="font-mono flex-1 text-yellow-700 tracking-widest">wk_••••••••••••••••••••••••••••••••</code>
+              <span className="text-yellow-600 flex-shrink-0 text-xs font-medium">Awaiting payment</span>
+            </div>
+          )}
 
           {/* Expanded details */}
           {expanded && (
@@ -603,7 +647,21 @@ function OrgCard({
 
               {/* Actions */}
               <div className="flex flex-wrap gap-2 pt-1">
-                {isActive ? (
+                {/* Primary CTA: Confirm payment if not yet active */}
+                {!org.key_is_live && org.status !== 'suspended' && (
+                  <Button
+                    size="sm"
+                    className="bg-green-600 hover:bg-green-700 text-white"
+                    disabled={actionLoading !== null}
+                    onClick={() => action('confirm-payment', 'Confirm Payment')}
+                  >
+                    <CreditCard className="h-3 w-3 mr-1" />
+                    {actionLoading === 'Confirm Payment' ? 'Activating…' : 'Confirm Payment & Activate'}
+                  </Button>
+                )}
+
+                {/* Suspend / reactivate */}
+                {isActive && org.key_is_live ? (
                   <Button
                     size="sm"
                     variant="outline"
@@ -614,27 +672,30 @@ function OrgCard({
                     <PowerOff className="h-3 w-3 mr-1" />
                     {actionLoading === 'Suspend' ? 'Suspending…' : 'Suspend'}
                   </Button>
-                ) : (
+                ) : org.status === 'suspended' ? (
                   <Button
                     size="sm"
                     className="bg-green-600 hover:bg-green-700 text-white"
                     disabled={actionLoading !== null}
-                    onClick={() => action('activate', 'Activate')}
+                    onClick={() => action('confirm-payment', 'Reactivate')}
                   >
                     <Power className="h-3 w-3 mr-1" />
-                    {actionLoading === 'Activate' ? 'Activating…' : 'Activate'}
+                    {actionLoading === 'Reactivate' ? 'Reactivating…' : 'Reactivate'}
+                  </Button>
+                ) : null}
+
+                {/* Rotate key — only when live */}
+                {org.key_is_live && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={actionLoading !== null}
+                    onClick={() => action('api-key/rotate', 'Rotate API Key')}
+                  >
+                    <Key className="h-3 w-3 mr-1" />
+                    {actionLoading === 'Rotate API Key' ? 'Rotating…' : 'Rotate API Key'}
                   </Button>
                 )}
-
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={actionLoading !== null}
-                  onClick={() => action('api-key/rotate', 'Rotate API Key')}
-                >
-                  <Key className="h-3 w-3 mr-1" />
-                  {actionLoading === 'Rotate API Key' ? 'Rotating…' : 'Rotate API Key'}
-                </Button>
               </div>
             </div>
           )}
@@ -648,26 +709,28 @@ function OrgCard({
 
 function PricingOverview({ orgs }: { orgs: Organization[] }) {
   const mrr = orgs
-    .filter(o => o.status === 'active')
+    .filter(o => o.key_is_live)
     .reduce((sum, o) => {
       const prices: Record<string, number> = { starter: 49, professional: 199, enterprise: 499 };
       return sum + (prices[o.plan] ?? 0);
     }, 0);
 
-  const countByPlan = (plan: string) => orgs.filter(o => o.plan === plan).length;
-  const countByStatus = (status: string) => orgs.filter(o => o.status === status).length;
+  const awaitingPayment = orgs.filter(o => !o.key_is_live && o.status !== 'suspended').length;
+  const activeCount = orgs.filter(o => o.key_is_live).length;
+  const suspendedCount = orgs.filter(o => o.status === 'suspended').length;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       {[
-        { label: 'Total Subscribers', value: orgs.length, color: 'text-blue-600' },
-        { label: 'Active', value: countByStatus('active'), color: 'text-green-600' },
-        { label: 'Trial', value: countByStatus('trial'), color: 'text-yellow-600' },
-        { label: 'MRR', value: `€${mrr.toLocaleString()}`, color: 'text-purple-600' },
+        { label: 'Total Orgs', value: orgs.length, color: 'text-blue-600', sub: null },
+        { label: 'Active (paid)', value: activeCount, color: 'text-green-600', sub: null },
+        { label: 'Awaiting Payment', value: awaitingPayment, color: 'text-yellow-600', sub: awaitingPayment > 0 ? 'action needed' : null },
+        { label: 'MRR', value: `€${mrr.toLocaleString()}`, color: 'text-purple-600', sub: null },
       ].map(stat => (
         <Card key={stat.label} className="text-center py-4">
           <p className={`text-3xl font-bold ${stat.color}`}>{stat.value}</p>
           <p className="text-xs text-gray-500 mt-1">{stat.label}</p>
+          {stat.sub && <p className="text-xs font-medium text-yellow-600 mt-0.5">{stat.sub}</p>}
         </Card>
       ))}
     </div>
@@ -805,6 +868,18 @@ export default function Organizations() {
         </div>
 
         <main className="max-w-7xl mx-auto px-6 py-6">
+          {/* Info: Thronos staff don't need subscriptions */}
+          <div className="flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 mb-5 text-sm">
+            <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
+            <div>
+              <span className="font-semibold text-blue-900">Thronos Chain employees do not need a subscription.</span>
+              <span className="text-blue-700 ml-1">
+                Staff access the platform via user roles (admin / manager / agent).
+                Subscriptions are for <strong>external organisations</strong> that bring their own personnel and call centres.
+              </span>
+            </div>
+          </div>
+
           {/* Pricing overview */}
           {!loading && <PricingOverview orgs={orgs} />}
 
