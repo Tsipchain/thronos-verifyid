@@ -124,6 +124,11 @@ class RBACManager {
   isAdmin(): boolean {
     return this.hasRole('admin');
   }
+
+  canManageOrganizations(): boolean {
+    // Only the platform administrator can manage SaaS subscriber organisations
+    return this.isAdmin();
+  }
 }
 
 export const rbac = new RBACManager();

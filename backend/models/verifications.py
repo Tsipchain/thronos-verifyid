@@ -128,3 +128,62 @@ class FraudAnalysis(Base):
     risk_level = Column(String, nullable=False)
     analysis_details = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.now, nullable=False)
+
+
+class DriverProgramType(str, enum.Enum):
+    TAXI_SCHOOL = "taxi_school"
+    DRONE_PROGRAM = "drone_program"
+
+
+class DriverProgramStatus(str, enum.Enum):
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    AWAITING_MANAGER = "awaiting_manager"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+
+
+class DriverProgramVerifications(Base):
+    """
+    DriverIntelligent program verification — records the full lifecycle of a
+    driver ('pirate') verification for a specific program (taxi school or drone).
+
+    Sub-verifications are stored as a JSON array in `sub_verifications`, each
+    entry signed by a Thronos miner via `miner_signatures`.  When the manager
+    issues the final approval the entire proof bundle is committed on-chain
+    and the resulting tx hash is stored in `final_chain_hash`.
+    """
+    __tablename__ = "driver_program_verifications"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(String, nullable=False, index=True)
+    program_type = Column(SQLEnum(DriverProgramType), nullable=False)
+    status = Column(SQLEnum(DriverProgramStatus), default=DriverProgramStatus.PENDING, nullable=False)
+
+    # Driver-specific fields
+    driver_name = Column(String, nullable=True)
+    license_number = Column(String, nullable=True)
+    vehicle_type = Column(String, nullable=True)        # e.g. taxi, helicopter, fixed-wing, multirotor
+    school_or_operator = Column(String, nullable=True)  # taxi school name or drone operator
+
+    # FK to the base identity document verification (existing flow)
+    document_verification_id = Column(Integer, ForeignKey("document_verifications.id"), nullable=True)
+
+    # JSON array of sub-verification step objects:
+    # [{step_key, label, status, miner_id, miner_signature, chain_tx, signed_at, notes}]
+    sub_verifications = Column(Text, nullable=True)
+
+    # JSON array of miner signature records (mirrors signed steps for quick lookup)
+    miner_signatures = Column(Text, nullable=True)
+
+    # Manager finalization
+    finalized_by = Column(String, nullable=True)
+    finalized_at = Column(DateTime, nullable=True)
+    manager_notes = Column(Text, nullable=True)
+
+    # Final on-chain proof (set after manager approval)
+    final_chain_hash = Column(String, nullable=True)
+    chain_proof = Column(Text, nullable=True)  # JSON with full proof bundle
+
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)

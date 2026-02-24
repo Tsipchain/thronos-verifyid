@@ -10,16 +10,20 @@ import AIAssistantModal from '@/components/AIAssistantModal';
 import ChatWidget from '@/components/ChatWidget';
 import LanguageSelector from '@/components/LanguageSelector';
 import ThemeToggle from '@/components/ThemeToggle';
+import NotificationBell from '@/components/NotificationBell';
 import { WelcomeModal } from '@/components/WelcomeModal';
-import { 
-  Shield, 
+import {
+  Shield,
   MessageSquare,
   Users,
   Settings,
   FileCheck,
   BarChart3,
   LogOut,
-  Bot
+  Bot,
+  Car,
+  Building2,
+  Ticket
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -121,6 +125,33 @@ export default function Dashboard() {
       bgColor: 'bg-blue-50 dark:bg-blue-900/20'
     },
     {
+      title: 'Driver Verifications',
+      description: 'DriverIntelligent taxi & drone program',
+      icon: Car,
+      path: '/admin/driver-verifications',
+      show: rbac.canAccessVerifications(),
+      color: 'text-indigo-600 dark:text-indigo-400',
+      bgColor: 'bg-indigo-50 dark:bg-indigo-900/20'
+    },
+    {
+      title: 'Organisations',
+      description: 'SaaS subscribers, plans & widget keys',
+      icon: Building2,
+      path: '/admin/organizations',
+      show: rbac.canManageOrganizations(),
+      color: 'text-rose-600 dark:text-rose-400',
+      bgColor: 'bg-rose-50 dark:bg-rose-900/20'
+    },
+    {
+      title: 'Support Tickets',
+      description: 'Help-desk ticketing & support requests',
+      icon: Ticket,
+      path: '/tickets',
+      show: true,
+      color: 'text-violet-600 dark:text-violet-400',
+      bgColor: 'bg-violet-50 dark:bg-violet-900/20'
+    },
+    {
       title: t('chat'),
       description: 'Team communication',
       icon: MessageSquare,
@@ -181,6 +212,7 @@ export default function Dashboard() {
                 <Bot className="h-4 w-4" />
                 AI Assistant
               </Button>
+              <NotificationBell />
               <LanguageSelector />
               <ThemeToggle />
               <div className="text-right">
