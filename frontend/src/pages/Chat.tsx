@@ -307,7 +307,7 @@ export default function Chat({ embedded = false, onClose }: ChatProps) {
   // ── Render ───────────────────────────────────────────────────────────────
 
   return (
-    <div className={`flex flex-col bg-gray-50 ${embedded ? 'h-full' : 'h-screen'}`}>
+    <div className={`flex flex-col bg-gray-50 text-gray-900 ${embedded ? 'h-full' : 'h-screen'}`}>
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-4 py-3 bg-white border-b flex-shrink-0">
@@ -403,7 +403,7 @@ export default function Chat({ embedded = false, onClose }: ChatProps) {
                       {/* Info */}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-1">
-                          <p className="text-sm font-medium truncate leading-tight">{displayName}</p>
+                          <p className="text-sm font-medium truncate leading-tight text-gray-900">{displayName}</p>
                           {conv.last_message_at && (
                             <span className="text-[10px] text-gray-400 flex-shrink-0">
                               {fmtTime(conv.last_message_at)}
@@ -457,10 +457,10 @@ export default function Chat({ embedded = false, onClose }: ChatProps) {
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <p className="text-sm font-medium truncate leading-tight">
+                      <p className="text-sm font-medium truncate leading-tight text-gray-900">
                         {user.name || user.email}
                       </p>
-                      <p className="text-xs text-gray-400">{user.role}</p>
+                      <p className="text-xs text-gray-500">{user.role}</p>
                     </div>
                   </button>
                 ))}
@@ -487,8 +487,8 @@ export default function Chat({ embedded = false, onClose }: ChatProps) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-sm leading-tight truncate">{convTitle}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="font-semibold text-sm leading-tight truncate text-gray-900">{convTitle}</p>
+                  <p className="text-xs text-gray-500">
                     {selectedConv.conversation_type === 'group'
                       ? `${selectedConv.participant_count} members`
                       : 'Private conversation'}
@@ -533,20 +533,20 @@ export default function Chat({ embedded = false, onClose }: ChatProps) {
                         )}
                         <div className={`max-w-[72%] flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
                           <div className="flex items-baseline gap-1.5 mb-0.5">
-                            <span className="text-[11px] font-medium text-gray-500">
+                            <span className="text-[11px] font-semibold text-gray-700">
                               {mine ? 'You' : msg.username}
                             </span>
-                            <span className="text-[10px] text-gray-400">
+                            <span className="text-[10px] text-gray-500">
                               {fmtTime(msg.created_at)}
                             </span>
                             {msg.is_edited && (
-                              <span className="text-[10px] text-gray-300">(edited)</span>
+                              <span className="text-[10px] text-gray-400">(edited)</span>
                             )}
                           </div>
                           <div className={`rounded-2xl px-3.5 py-2 text-sm leading-snug shadow-sm ${
                             mine
                               ? 'bg-blue-600 text-white rounded-tr-sm'
-                              : 'bg-white text-gray-800 border rounded-tl-sm'
+                              : 'bg-white text-gray-900 border border-gray-200 rounded-tl-sm'
                           }`}>
                             {msg.content}
                           </div>
