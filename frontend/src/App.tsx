@@ -23,6 +23,8 @@ import ClientVideoCall from './pages/ClientVideoCall';
 import DriverVerification from './pages/DriverVerification';
 import DriverVerifications from './pages/DriverVerifications';
 import Organizations from './pages/Organizations';
+import Notifications from './pages/Notifications';
+import Tickets from './pages/Tickets';
 
 const queryClient = new QueryClient();
 
@@ -76,6 +78,9 @@ const App = () => {
             <Route path="/client/*" element={<ClientPortal />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/credits" element={<Credits />} />
+            <Route path="/notifications" element={<Notifications />} />
+            <Route path="/tickets" element={<Tickets />} />
+            <Route path="/tickets/:id" element={<Tickets />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

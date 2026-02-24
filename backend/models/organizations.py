@@ -92,6 +92,14 @@ class Organization(Base):
     # Internal notes from Thronos admin
     admin_notes = Column(Text, nullable=True)
 
+    # Stripe integration — populated when org pays via Stripe checkout
+    stripe_customer_id     = Column(String(255), nullable=True, index=True)
+    stripe_subscription_id = Column(String(255), nullable=True, index=True)
+
+    # Expiry warning tracking (used by subscription monitor to avoid duplicate alerts)
+    expiry_warned_14d = Column(Boolean, default=False, nullable=False)
+    expiry_warned_7d  = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     suspended_at = Column(DateTime, nullable=True)

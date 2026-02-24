@@ -16,6 +16,7 @@ from services.database import initialize_database, close_database
 from services.mock_data import initialize_mock_data
 from services.auth import initialize_admin_user
 from services.queue_monitor import run_queue_monitor
+from services.subscription_monitor import run_subscription_monitor
 # MODULE_IMPORTS_END
 
 
@@ -74,16 +75,20 @@ async def lifespan(app: FastAPI):
 
     # Start the background queue monitor (AI agent fallback after 15 min)
     _monitor_task = asyncio.create_task(run_queue_monitor())
+    # Start the subscription expiry monitor (checks every 12 h)
+    _sub_monitor_task = asyncio.create_task(run_subscription_monitor())
 
     logger.info("=== Application startup completed successfully ===")
     yield
 
-    # Graceful shutdown: cancel the monitor task
+    # Graceful shutdown: cancel background tasks
     _monitor_task.cancel()
-    try:
-        await _monitor_task
-    except asyncio.CancelledError:
-        pass
+    _sub_monitor_task.cancel()
+    for t in (_monitor_task, _sub_monitor_task):
+        try:
+            await t
+        except asyncio.CancelledError:
+            pass
 
     # MODULE_SHUTDOWN_START
     await close_database()

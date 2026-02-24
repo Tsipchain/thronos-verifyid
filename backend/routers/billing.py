@@ -342,7 +342,30 @@ async def stripe_webhook(
         # Dev mode — no signature check
         event = json.loads(payload)
 
-    if event.get("type") != "checkout.session.completed":
+    event_type = event.get("type", "")
+
+    # ── Org subscription cancelled / deleted ───────────────────────────────
+    if event_type == "customer.subscription.deleted":
+        obj = event["data"]["object"]
+        meta = obj.get("metadata", {})
+        org_id_from_meta = meta.get("org_id", "")
+        if org_id_from_meta:
+            await _handle_org_stripe_cancellation(db, org_id_from_meta)
+            return {"received": True, "processed": True, "channel": "org_cancellation"}
+
+    # ── Organisation SaaS subscription events ──────────────────────────────
+    # When Stripe metadata contains org_id, this payment is for a tenant
+    # Organisation subscription — auto-activate the org's widget API key.
+    if event_type in ("checkout.session.completed", "invoice.payment_succeeded"):
+        obj = event["data"]["object"]
+        meta = obj.get("metadata", {})
+        org_id_from_meta = meta.get("org_id", "")
+        if org_id_from_meta:
+            await _handle_org_stripe_payment(db, event_type, obj, org_id_from_meta)
+            return {"received": True, "processed": True, "channel": "org_subscription"}
+
+    # ── Standard user/credits flow ─────────────────────────────────────────
+    if event_type != "checkout.session.completed":
         return {"received": True, "processed": False}
 
     session = event["data"]["object"]
@@ -396,6 +419,94 @@ async def stripe_webhook(
 
     logger.info(f"Stripe payment settled: user={user_id} plan={plan_id} credits={credits} fees={fees}")
     return {"received": True, "processed": True}
+
+
+async def _handle_org_stripe_payment(
+    db: AsyncSession,
+    event_type: str,
+    obj: dict,
+    org_id: str,
+) -> None:
+    """Auto-activate an Organisation's widget API key on successful Stripe payment."""
+    from datetime import timedelta
+    from sqlalchemy import select as _select
+    from models.organizations import Organization, OrgStatus
+    from services.internal_notify import notify_managers
+    from services.notify import notify_all_admins
+
+    result = await db.execute(_select(Organization).where(Organization.id == org_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        logger.warning("Stripe org webhook: org_id=%s not found", org_id)
+        return
+
+    # Store Stripe references
+    customer_id = obj.get("customer") or obj.get("customer_id")
+    subscription_id = obj.get("subscription")
+    if customer_id:
+        org.stripe_customer_id = str(customer_id)
+    if subscription_id:
+        org.stripe_subscription_id = str(subscription_id)
+
+    # Activate the org
+    org.plan_status = "active"
+    org.status = OrgStatus.ACTIVE
+    org.plan_expires_at = datetime.utcnow() + timedelta(days=30)
+    org.expiry_warned_14d = False
+    org.expiry_warned_7d = False
+    await db.commit()
+
+    logger.info(
+        "Stripe auto-activated org %s (%s) via event %s",
+        org.id, org.name, event_type,
+    )
+
+    # Notify admins
+    await notify_managers(
+        db,
+        f"✅ Stripe payment confirmed — Organisation '{org.name}' subscription activated.\n"
+        f"Plan: {org.plan} | Expires: {org.plan_expires_at.strftime('%Y-%m-%d')}\n"
+        f"Contact: {org.contact_email}",
+    )
+    await notify_all_admins(
+        db,
+        title=f"Org '{org.name}' subscription activated via Stripe",
+        body=f"Plan: {org.plan} | Expires: {org.plan_expires_at.strftime('%Y-%m-%d')}",
+        category="billing",
+        entity_type="org",
+        entity_id=org.id,
+    )
+
+
+async def _handle_org_stripe_cancellation(db: AsyncSession, org_id: str) -> None:
+    """Lock an org's widget API key when Stripe subscription is deleted/cancelled."""
+    from sqlalchemy import select as _select
+    from models.organizations import Organization, OrgStatus
+    from services.internal_notify import notify_managers
+    from services.notify import notify_all_admins
+
+    result = await db.execute(_select(Organization).where(Organization.id == org_id))
+    org = result.scalar_one_or_none()
+    if not org:
+        return
+    org.plan_status = "canceled"
+    org.status = OrgStatus.SUSPENDED
+    await db.commit()
+
+    logger.info("Stripe cancelled subscription for org %s (%s)", org.id, org.name)
+    await notify_managers(
+        db,
+        f"❌ Stripe subscription CANCELLED for organisation '{org.name}'.\n"
+        f"Widget API key has been locked.\nContact: {org.contact_email}",
+    )
+    await notify_all_admins(
+        db,
+        title=f"Org '{org.name}' subscription cancelled",
+        body="Stripe subscription was deleted. Widget API key is now locked.",
+        category="billing",
+        entity_type="org",
+        entity_id=org.id,
+    )
 
 
 # ── BTC Rail ─────────────────────────────────────────────────────────────────
