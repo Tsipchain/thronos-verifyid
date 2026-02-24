@@ -1,6 +1,7 @@
+import json
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -45,6 +46,8 @@ class VerificationListItem(BaseModel):
     created_at: datetime
     verified_at: Optional[datetime]
     blockchain_tx_hash: Optional[str]
+    # Audit trail: list of review events (AI fraud check, human agent, AI fallback)
+    review_history: List[Any] = []
 
     class Config:
         from_attributes = True
@@ -131,6 +134,12 @@ async def list_all_verifications(
     stmt = stmt.offset(offset).limit(limit)
     result = await db.execute(stmt)
     rows = result.scalars().all()
+    def _parse_history(extracted_data: Optional[str]) -> list:
+        try:
+            return json.loads(extracted_data or "{}").get("review_history", [])
+        except Exception:
+            return []
+
     return [
         VerificationListItem(
             id=r.id,
@@ -142,6 +151,7 @@ async def list_all_verifications(
             created_at=r.created_at,
             verified_at=r.verified_at,
             blockchain_tx_hash=r.blockchain_tx_hash,
+            review_history=_parse_history(r.extracted_data),
         )
         for r in rows
     ]

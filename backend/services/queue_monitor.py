@@ -12,16 +12,16 @@ Flow:
 """
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from models.auth import User
 from models.verifications import DocumentVerifications, VerificationStatus
 from models.video_call_queue import CallStatus, VideoCallQueue
 from services.aihub_client import AIHubClient
-from services.email import EmailService
+from services.internal_notify import notify_managers
 
 logger = logging.getLogger(__name__)
 
@@ -32,61 +32,6 @@ CHECK_INTERVAL_SECONDS = 60  # run the check once per minute
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _send_client_notification(to_email: str, verification_id: int) -> None:
-    """Send best-effort email to the client whose doc was AI-reviewed."""
-    try:
-        EmailService.send_email(
-            to_email=to_email,
-            subject="Your Identity Verification — Under Review",
-            html_body=f"""
-<h2>Verification Update</h2>
-<p>Your identity verification request (ID: <strong>{verification_id}</strong>) has been
-processed by our automated review system and is now awaiting final approval from our
-management team.</p>
-<p>You will receive an official email from our team once the final decision has been made.
-Thank you for your patience.</p>
-<p><em>— Thronos VerifyID Team</em></p>
-""",
-            text_body=(
-                f"Your identity verification (ID: {verification_id}) has been reviewed by our "
-                "automated system and is now awaiting final approval from our management team. "
-                "You will receive an email from our team with the final decision."
-            ),
-        )
-    except Exception as exc:
-        logger.error(
-            "Failed to send client notification email for verification %d: %s",
-            verification_id, exc,
-        )
-
-
-def _send_manager_notification(to_email: str, verification_id: int, customer_id: str) -> None:
-    """Send best-effort email to a manager requesting their final approval."""
-    try:
-        EmailService.send_email(
-            to_email=to_email,
-            subject=f"[Action Required] AI-Reviewed Verification #{verification_id}",
-            html_body=f"""
-<h2>Verification Requires Your Approval</h2>
-<p>Verification <strong>#{verification_id}</strong> (Client ID: <code>{customer_id}</code>)
-was reviewed by the AI agent because no human agent was available within the
-{TIMEOUT_MINUTES}-minute window.</p>
-<p>Please log in to the VerifyID platform to review the AI findings and provide the
-<strong>final approval or rejection</strong>.</p>
-<p><em>— Thronos VerifyID System</em></p>
-""",
-            text_body=(
-                f"Verification #{verification_id} (Client ID: {customer_id}) has been AI-reviewed "
-                f"because no human agent was available within {TIMEOUT_MINUTES} minutes. "
-                "Please log in to the VerifyID platform to give the final approval."
-            ),
-        )
-    except Exception as exc:
-        logger.error(
-            "Failed to send manager notification email for verification %d: %s",
-            verification_id, exc,
-        )
 
 
 async def _handle_timed_out_entry(db, queue_entry: VideoCallQueue) -> None:
@@ -109,6 +54,7 @@ async def _handle_timed_out_entry(db, queue_entry: VideoCallQueue) -> None:
         return
 
     # 3. Run AI analysis (best-effort — failures do not block the flow)
+    ai_result: dict = {}
     try:
         ai_result = await AIHubClient.analyze_document({
             "document_type": verification.document_type.value,
@@ -126,43 +72,50 @@ async def _handle_timed_out_entry(db, queue_entry: VideoCallQueue) -> None:
     except Exception as exc:
         logger.error("AI review error for verification %d: %s", verification.id, exc)
 
+    # Persist AI-fallback audit entry into extracted_data.review_history
+    try:
+        existing_data: dict = json.loads(verification.extracted_data or "{}")
+    except Exception:
+        existing_data = {}
+    existing_data.setdefault("review_history", []).append({
+        "source": "ai_agent_fallback",
+        "fraud_score": ai_result.get("fraud_score", 50),
+        "risk_level": ai_result.get("risk_level", "medium"),
+        "flags": ai_result.get("flags", []),
+        "explanation": ai_result.get("explanation", ""),
+        "triggered_at": datetime.now().isoformat(),
+        "reason": f"No human agent available within {TIMEOUT_MINUTES} minutes",
+    })
+    verification.extracted_data = json.dumps(existing_data)
+
     # 4. Move to IN_REVIEW — manager must give the final OK
     verification.verification_status = VerificationStatus.IN_REVIEW
     await db.commit()
 
-    # 5. Fetch client and manager emails then notify (outside the DB transaction)
-    client_email: str | None = None
+    # 5. Notify client via WebSocket (best-effort)
     try:
-        client_stmt = select(User).where(User.id == queue_entry.customer_id)
-        client_result = await db.execute(client_stmt)
-        client_user = client_result.scalar_one_or_none()
-        if client_user:
-            client_email = client_user.email
-    except Exception as exc:
-        logger.error("Could not fetch client user for queue entry %d: %s", queue_entry.id, exc)
-
-    manager_emails: list[str] = []
-    try:
-        mgr_stmt = select(User).where(
-            User.role.in_(["manager", "admin"]),
-            User.is_active.is_(True),
+        from routers.video_calls import manager as _ws
+        await _ws.send_personal_message(
+            {
+                "type": "ai_reviewed",
+                "verification_id": verification.id,
+                "message": "Your documents have been reviewed by our AI system. A manager will make the final decision shortly.",
+            },
+            queue_entry.customer_id,
         )
-        mgr_result = await db.execute(mgr_stmt)
-        managers = mgr_result.scalars().all()
-        manager_emails = [m.email for m in managers if m.email]
-    except Exception as exc:
-        logger.error("Could not fetch manager list for queue entry %d: %s", queue_entry.id, exc)
+    except Exception as ws_exc:
+        logger.debug("WS notify to client failed for verification %d: %s", verification.id, ws_exc)
 
-    if EmailService.is_configured():
-        if client_email:
-            _send_client_notification(client_email, verification.id)
-        for mgr_email in manager_emails:
-            _send_manager_notification(mgr_email, verification.id, queue_entry.customer_id)
-    else:
-        logger.info(
-            "Email service not configured — skipping notifications for verification %d.",
-            verification.id,
-        )
+    # 6. Notify managers via internal chat (no SMTP required)
+    await notify_managers(
+        db,
+        f"[Action Required] Verification #{verification.id} (Client: {queue_entry.customer_id}) "
+        f"was reviewed by the AI agent because no human agent was available within "
+        f"{TIMEOUT_MINUTES} minutes.\n"
+        f"AI score: {ai_result.get('fraud_score', '?')}/100 · "
+        f"Risk: {ai_result.get('risk_level', '?')}\n"
+        f"Please log in to the VerifyID platform to give the final approval.",
+    )
 
     logger.info(
         "Timed-out queue entry %d handled. Verification %d → IN_REVIEW.",

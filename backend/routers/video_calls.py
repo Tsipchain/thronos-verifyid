@@ -417,6 +417,22 @@ async def complete_call(
         if verification:
             verification.verification_status = new_status
             verification.verified_at = datetime.now()
+
+            # Append human-agent review to the audit history
+            import json as _json
+            try:
+                _data: dict = _json.loads(verification.extracted_data or "{}")
+            except Exception:
+                _data = {}
+            _data.setdefault("review_history", []).append({
+                "source": "human_agent",
+                "agent_id": current_user.id,
+                "outcome": outcome,
+                "notes": request.notes or "",
+                "completed_at": datetime.now().isoformat(),
+            })
+            verification.extracted_data = _json.dumps(_data)
+
             await db.commit()
             await db.refresh(verification)
 
