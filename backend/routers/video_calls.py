@@ -195,6 +195,7 @@ class CallResponse(BaseModel):
     wait_time_seconds: Optional[int] = None
     client_online: Optional[bool] = None  # True if client's WebSocket is currently connected
     is_stuck: bool = False  # True for IN_PROGRESS calls that have no completed_at (stuck)
+    outcome: Optional[str] = None  # "approved" | "rejected" — set for completed calls
 
 
 class AgentResponse(BaseModel):
@@ -510,6 +511,57 @@ async def complete_call(
     except Exception as e:
         logger.error("Error completing call: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/history", response_model=List[CallResponse])
+async def get_call_history(
+    limit: int = 50,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Fetch completed calls handled by the current agent, with verification outcome."""
+    from sqlalchemy import select as _select, desc as _desc, outerjoin as _outerjoin
+    # Join with DocumentVerifications to get outcome
+    stmt = (
+        _select(VideoCallQueue, DocumentVerifications.verification_status)
+        .join(DocumentVerifications, VideoCallQueue.verification_id == DocumentVerifications.id, isouter=True)
+        .where(
+            VideoCallQueue.agent_id == current_user.id,
+            VideoCallQueue.status == CallStatus.COMPLETED,
+        )
+        .order_by(_desc(VideoCallQueue.completed_at))
+        .limit(limit)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    history = []
+    for call, ver_status in rows:
+        outcome: str | None = None
+        if ver_status is not None:
+            outcome = ver_status.value  # "approved" | "rejected" | etc.
+        elif call.notes:
+            # Fallback: parse from notes string
+            notes_lower = call.notes.lower()
+            if "approved" in notes_lower:
+                outcome = "approved"
+            elif "rejected" in notes_lower:
+                outcome = "rejected"
+
+        history.append(CallResponse(
+            id=call.id,
+            verification_id=call.verification_id,
+            customer_id=call.customer_id,
+            agent_id=call.agent_id,
+            priority=call.priority.value,
+            status=call.status.value,
+            created_at=call.created_at,
+            assigned_at=call.assigned_at,
+            started_at=call.started_at,
+            completed_at=call.completed_at,
+            outcome=outcome,
+        ))
+    return history
 
 
 @router.get("/agents/availability", response_model=List[AgentResponse])

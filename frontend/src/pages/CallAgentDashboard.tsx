@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Video, Clock, AlertTriangle, Phone, User, CheckCircle, Bot } from 'lucide-react';
+import { Video, Clock, AlertTriangle, Phone, User, CheckCircle, XCircle, Bot, History } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Toaster } from '@/components/ui/toaster';
 import AIAssistantModal from '@/components/AIAssistantModal';
@@ -28,6 +28,7 @@ interface VideoCallRequest {
   wait_time_seconds: number;
   client_online?: boolean;
   is_stuck?: boolean;
+  outcome?: string | null;
 }
 
 interface AgentStatus {
@@ -41,6 +42,7 @@ interface AgentStatus {
 export default function CallAgentDashboard() {
   const navigate = useNavigate();
   const [pendingCalls, setPendingCalls] = useState<VideoCallRequest[]>([]);
+  const [callHistory, setCallHistory] = useState<VideoCallRequest[]>([]);
   const [activeCalls, setActiveCalls] = useState<number>(0);
   const [agentStatus, setAgentStatus] = useState<string>('offline');
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -89,8 +91,9 @@ export default function CallAgentDashboard() {
       // Set agent status to online
       await updateAgentStatus('online');
       
-      // Fetch pending calls
+      // Fetch pending calls and history
       await fetchPendingCalls();
+      await fetchCallHistory();
       
       // Start heartbeat
       startHeartbeat(user.id);
@@ -147,6 +150,7 @@ export default function CallAgentDashboard() {
         fetchPendingCalls();
       } else if (message.type === 'call_completed') {
         fetchPendingCalls();
+        fetchCallHistory();
       } else if (message.type === 'client_disconnected') {
         // Mark the matching pending call as offline immediately (no re-fetch needed)
         setPendingCalls(prev =>
@@ -189,11 +193,16 @@ export default function CallAgentDashboard() {
     } catch (error: any) {
       console.error('Failed to fetch pending calls:', error);
       const detail = error?.response?.data?.detail || error.message;
-      toast({
-        title: 'Error',
-        description: detail,
-        variant: 'destructive'
-      });
+      toast({ title: 'Error', description: detail, variant: 'destructive' });
+    }
+  };
+
+  const fetchCallHistory = async () => {
+    try {
+      const response = await apiClient.get<VideoCallRequest[]>('/api/v1/video-calls/history');
+      setCallHistory(response.data);
+    } catch (error: any) {
+      console.error('Failed to fetch call history:', error);
     }
   };
 
@@ -311,7 +320,7 @@ export default function CallAgentDashboard() {
             Active Calls ({activeCalls})
           </TabsTrigger>
           <TabsTrigger value="history">
-            Call History
+            Call History ({callHistory.length})
           </TabsTrigger>
         </TabsList>
 
@@ -431,14 +440,69 @@ export default function CallAgentDashboard() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="history" className="mt-4">
-          <Card>
-            <CardContent className="pt-6 text-center text-gray-500">
-              <CheckCircle className="mx-auto h-12 w-12 mb-2 opacity-50" />
-              <p>Call history</p>
-              <p className="text-sm">Completed calls will appear here</p>
-            </CardContent>
-          </Card>
+        <TabsContent value="history" className="mt-4 space-y-3">
+          {callHistory.length === 0 ? (
+            <Card>
+              <CardContent className="pt-6 text-center text-gray-500">
+                <History className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                <p>No completed calls yet</p>
+                <p className="text-sm">Calls you handle will appear here with their outcomes</p>
+              </CardContent>
+            </Card>
+          ) : (
+            callHistory.map((call) => {
+              const approved = call.outcome === 'approved';
+              const rejected = call.outcome === 'rejected';
+              return (
+                <Card key={call.id} className={`border-l-4 ${approved ? 'border-l-green-500' : rejected ? 'border-l-red-500' : 'border-l-gray-400'}`}>
+                  <CardContent className="py-4 px-5">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        {approved ? (
+                          <CheckCircle className="h-8 w-8 text-green-500 flex-shrink-0" />
+                        ) : rejected ? (
+                          <XCircle className="h-8 w-8 text-red-500 flex-shrink-0" />
+                        ) : (
+                          <Clock className="h-8 w-8 text-gray-400 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-semibold text-sm">Call #{call.id}</span>
+                            <Badge
+                              className={
+                                approved ? 'bg-green-100 text-green-800 border-green-200' :
+                                rejected ? 'bg-red-100 text-red-800 border-red-200' :
+                                'bg-gray-100 text-gray-700 border-gray-200'
+                              }
+                              variant="outline"
+                            >
+                              {call.outcome ? call.outcome.toUpperCase() : 'UNKNOWN'}
+                            </Badge>
+                            {getPriorityBadge(call.priority)}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            Verification #{call.verification_id} · Customer: {call.customer_id}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right flex-shrink-0 text-xs text-gray-400 space-y-0.5">
+                        {call.completed_at && (
+                          <p>{new Date(call.completed_at).toLocaleString()}</p>
+                        )}
+                        {call.started_at && call.completed_at && (
+                          <p>
+                            Duration: {Math.round(
+                              (new Date(call.completed_at).getTime() - new Date(call.started_at).getTime()) / 60000
+                            )}m
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })
+          )}
         </TabsContent>
       </Tabs>
       <AIAssistantModal open={aiModalOpen} onOpenChange={setAiModalOpen} />
