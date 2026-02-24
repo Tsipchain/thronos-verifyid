@@ -71,42 +71,6 @@ class VerificationDetailResponse(BaseModel):
         from_attributes = True
 
 
-@router.get("/{verification_id}", response_model=VerificationDetailResponse)
-async def get_verification_detail(
-    verification_id: int,
-    current_user: UserResponse = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Get full verification details including document images.
-    Accessible by agents, managers, and admins, plus the owning client.
-    """
-    stmt = select(DocumentVerifications).where(DocumentVerifications.id == verification_id)
-    result = await db.execute(stmt)
-    v = result.scalar_one_or_none()
-    if not v:
-        raise HTTPException(status_code=404, detail="Verification not found")
-
-    # Allow: owner OR staff roles
-    allowed_roles = {"agent", "kyc_agent", "manager", "admin"}
-    if v.user_id != current_user.id and current_user.role not in allowed_roles:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    return VerificationDetailResponse(
-        id=v.id,
-        document_type=v.document_type.value,
-        verification_status=v.verification_status.value,
-        document_image_url=v.document_image_url,
-        extracted_data=v.extracted_data,
-        full_name=v.full_name,
-        document_number=v.document_number,
-        date_of_birth=v.date_of_birth,
-        nationality=v.nationality,
-        fraud_score=v.fraud_score,
-        risk_level=v.risk_level,
-        created_at=v.created_at,
-    )
-
-
 class ManagerFinalizeRequest(BaseModel):
     decision: str = "completed"  # "completed" | "rejected"
     notes: Optional[str] = None
@@ -398,3 +362,40 @@ async def get_verification_status(
         return status
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Must be last: catches any /{verification_id} after all fixed-path routes ──
+
+@router.get("/{verification_id}", response_model=VerificationDetailResponse)
+async def get_verification_detail(
+    verification_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get full verification details including document images.
+    Accessible by agents, managers, and admins, plus the owning client.
+    """
+    stmt = select(DocumentVerifications).where(DocumentVerifications.id == verification_id)
+    result = await db.execute(stmt)
+    v = result.scalar_one_or_none()
+    if not v:
+        raise HTTPException(status_code=404, detail="Verification not found")
+
+    allowed_roles = {"agent", "kyc_agent", "manager", "admin"}
+    if v.user_id != current_user.id and current_user.role not in allowed_roles:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    return VerificationDetailResponse(
+        id=v.id,
+        document_type=v.document_type.value,
+        verification_status=v.verification_status.value,
+        document_image_url=v.document_image_url,
+        extracted_data=v.extracted_data,
+        full_name=v.full_name,
+        document_number=v.document_number,
+        date_of_birth=v.date_of_birth,
+        nationality=v.nationality,
+        fraud_score=v.fraud_score,
+        risk_level=v.risk_level,
+        created_at=v.created_at,
+    )
