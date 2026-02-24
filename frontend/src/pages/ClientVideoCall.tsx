@@ -7,15 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import {
-  Video,
-  VideoOff,
-  Mic,
-  MicOff,
-  PhoneOff,
-  CheckCircle,
-  XCircle,
-  Loader2,
-  Shield,
+  Video, VideoOff, Mic, MicOff, PhoneOff,
+  CheckCircle, XCircle, Loader2, Shield, ArrowLeftRight,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -43,91 +36,39 @@ export default function ClientVideoCall() {
   const [isAudioOn, setIsAudioOn] = useState(true);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [result, setResult] = useState<VerificationResult | null>(null);
+  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [pipSwapped, setPipSwapped] = useState(false); // false = remote (agent) is main
 
-  const localVideoRef = useRef<HTMLVideoElement>(null);
-  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const mainVideoRef = useRef<HTMLVideoElement>(null);
+  const pipVideoRef = useRef<HTMLVideoElement>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // ── Sync video srcObjects ─────────────────────────────────────────────────
   useEffect(() => {
-    const init = async () => {
-      const user = await authApi.getCurrentUser();
-      if (!user) { navigate('/login'); return; }
+    const mainS = pipSwapped ? localStreamRef.current : remoteStreamRef.current;
+    const pipS  = pipSwapped ? remoteStreamRef.current : localStreamRef.current;
+    if (mainVideoRef.current) mainVideoRef.current.srcObject = mainS;
+    if (pipVideoRef.current)  pipVideoRef.current.srcObject  = pipS;
+  }, [pipSwapped, localStream, remoteStream]);
 
-      // Start camera
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        localStreamRef.current = stream;
-        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-      } catch (err: any) {
-        const msg = err.name === 'NotAllowedError'
-          ? 'Camera/microphone access denied. Please allow access in your browser settings and refresh.'
-          : 'Could not access camera or microphone.';
-        setCameraError(msg);
-        toast({ title: 'Camera Error', description: msg, variant: 'destructive' });
-      }
-
-      // Connect WebSocket for signaling
-      const base = getAPIBaseURL();
-      const wsBase = base.startsWith('https') ? base.replace('https', 'wss') : base.replace('http', 'ws');
-      const ws = new WebSocket(`${wsBase}/api/v1/video-calls/ws/${user.id}`);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        ws.send(JSON.stringify({ type: 'join_call', call_id: Number(callId) }));
-      };
-
-      ws.onmessage = async (event) => {
-        const msg = JSON.parse(event.data);
-
-        if (msg.type === 'offer') {
-          // Agent sent an offer — create answer
-          const pc = createPeerConnection();
-          await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
-          const answer = await pc.createAnswer();
-          await pc.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: 'answer', answer, call_id: Number(callId) }));
-          setCallState('in_call');
-
-        } else if (msg.type === 'answer') {
-          if (pcRef.current) {
-            await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.answer));
-          }
-        } else if (msg.type === 'ice_candidate') {
-          if (pcRef.current) {
-            await pcRef.current.addIceCandidate(new RTCIceCandidate(msg.candidate));
-          }
-        } else if (msg.type === 'verification_complete') {
-          setResult({ outcome: msg.outcome, tx_hash: msg.tx_hash });
-          setCallState('completed');
-          cleanup(false);
-        }
-      };
-
-      ws.onerror = () => toast({ title: 'Connection error', description: 'Lost signaling connection', variant: 'destructive' });
-    };
-
-    init();
-
-    return () => cleanup(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [callId]);
-
+  // ── PeerConnection factory ────────────────────────────────────────────────
   const createPeerConnection = () => {
     const pc = new RTCPeerConnection(ICE_SERVERS);
     pcRef.current = pc;
 
-    // Add local tracks
     localStreamRef.current?.getTracks().forEach((t) => pc.addTrack(t, localStreamRef.current!));
 
-    // Show remote stream
     pc.ontrack = (event) => {
       const [remote] = event.streams;
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote;
+      remoteStreamRef.current = remote;
+      setRemoteStream(remote);
+      setCallState('in_call');
     };
 
-    // Forward ICE candidates to server
     pc.onicecandidate = (event) => {
       if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({
@@ -138,8 +79,93 @@ export default function ClientVideoCall() {
       }
     };
 
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'connected') setCallState('in_call');
+    };
+
     return pc;
   };
+
+  // ── Main init ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const init = async () => {
+      const user = await authApi.getCurrentUser();
+      if (!user) { navigate('/login'); return; }
+
+      // Start camera
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStreamRef.current = stream;
+        setLocalStream(stream);
+      } catch (err: any) {
+        const msg = err.name === 'NotAllowedError'
+          ? 'Camera/microphone access denied. Please allow access in your browser settings.'
+          : 'Could not access camera or microphone.';
+        setCameraError(msg);
+        toast({ title: 'Camera Error', description: msg, variant: 'destructive' });
+      }
+
+      // Connect signaling
+      const base = getAPIBaseURL();
+      const wsBase = base.startsWith('https') ? base.replace('https', 'wss') : base.replace('http', 'ws');
+      const ws = new WebSocket(`${wsBase}/api/v1/video-calls/ws/${user.id}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        ws.send(JSON.stringify({ type: 'join_call', call_id: Number(callId), role: 'client' }));
+      };
+
+      ws.onmessage = async (event) => {
+        const msg = JSON.parse(event.data);
+
+        switch (msg.type) {
+          case 'call_joined':
+            // Server confirmed — if agent already in room they'll send us an offer shortly
+            break;
+
+          case 'offer': {
+            // Agent sent offer → create answer
+            const pc = createPeerConnection();
+            await pc.setRemoteDescription(new RTCSessionDescription(msg.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            ws.send(JSON.stringify({ type: 'answer', answer, call_id: Number(callId) }));
+            break;
+          }
+
+          case 'answer':
+            if (pcRef.current) {
+              await pcRef.current.setRemoteDescription(new RTCSessionDescription(msg.answer));
+            }
+            break;
+
+          case 'ice_candidate':
+            if (pcRef.current) {
+              try { await pcRef.current.addIceCandidate(new RTCIceCandidate(msg.candidate)); } catch {}
+            }
+            break;
+
+          case 'peer_left':
+            setCallState('connecting');
+            setRemoteStream(null);
+            remoteStreamRef.current = null;
+            break;
+
+          case 'verification_complete':
+            setResult({ outcome: msg.outcome, tx_hash: msg.tx_hash });
+            setCallState('completed');
+            cleanup(false);
+            break;
+        }
+      };
+
+      ws.onerror = () => toast({ title: 'Connection error', description: 'Signaling lost', variant: 'destructive' });
+    };
+
+    init();
+    return () => cleanup(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callId]);
 
   const cleanup = (closeWs = true) => {
     localStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -179,8 +205,6 @@ export default function ClientVideoCall() {
                   : 'Your document could not be verified. Please contact support or try again.'}
               </p>
             </div>
-
-            {/* Blockchain proof */}
             {approved && (
               <div className="bg-gray-50 border rounded-lg p-4 text-left space-y-2">
                 <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -192,12 +216,11 @@ export default function ClientVideoCall() {
                 ) : (
                   <div className="flex items-center gap-2 text-xs text-gray-500">
                     <Loader2 className="h-3 w-3 animate-spin" />
-                    Anchoring to blockchain via ACICS miners…
+                    Anchoring to Thronos blockchain via ACICS miners…
                   </div>
                 )}
               </div>
             )}
-
             <Button className="w-full" onClick={() => navigate('/client')}>
               Go to My Portal
             </Button>
@@ -209,73 +232,109 @@ export default function ClientVideoCall() {
 
   // ── Video call screen ─────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-4">
-      <div className="max-w-4xl mx-auto space-y-4">
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col">
 
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold">Identity Verification Call</h1>
-            <p className="text-sm text-gray-400">Your agent is verifying your identity</p>
-          </div>
-          <Badge className={callState === 'in_call' ? 'bg-green-600' : 'bg-yellow-600'}>
-            {callState === 'in_call' ? 'Connected' : 'Connecting…'}
-          </Badge>
+      {/* Top bar */}
+      <div className="flex items-center justify-between px-5 py-3 bg-gray-900/80 border-b border-gray-800 flex-shrink-0">
+        <div>
+          <h1 className="text-base font-bold">Identity Verification Call</h1>
+          <p className="text-xs text-gray-400">Your agent is verifying your identity</p>
         </div>
+        <Badge className={callState === 'in_call' ? 'bg-green-600 text-xs' : 'bg-yellow-600 text-xs'}>
+          {callState === 'in_call' ? 'Connected' : 'Connecting…'}
+        </Badge>
+      </div>
 
-        {cameraError && (
-          <div className="bg-red-900/50 border border-red-600 rounded-lg p-4 text-red-200 text-sm">
-            {cameraError}
-          </div>
-        )}
+      {cameraError && (
+        <div className="mx-4 mt-3 bg-red-900/50 border border-red-600 rounded-lg p-3 text-red-200 text-sm flex-shrink-0">
+          {cameraError}
+        </div>
+      )}
 
-        {/* Remote video — agent */}
-        <div className="relative bg-gray-800 aspect-video rounded-xl overflow-hidden">
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" />
-          {callState === 'connecting' && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-400 gap-3">
+      {/* PiP video area */}
+      <div className="flex-1 flex flex-col p-3 gap-3 min-h-0">
+
+        <div className="relative flex-1 bg-gray-900 rounded-2xl overflow-hidden min-h-0">
+
+          {/* Main video */}
+          <video
+            ref={mainVideoRef}
+            autoPlay
+            playsInline
+            muted={pipSwapped}
+            className="w-full h-full object-cover"
+          />
+
+          {/* Waiting overlay (when remote/agent not connected yet) */}
+          {!pipSwapped && callState === 'connecting' && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 gap-3 pointer-events-none">
               <Loader2 className="h-10 w-10 animate-spin text-blue-400" />
               <p className="text-sm">Waiting for agent to connect…</p>
             </div>
           )}
-          <div className="absolute bottom-3 left-3">
-            <Badge variant="secondary" className="text-xs">Agent</Badge>
-          </div>
-        </div>
 
-        {/* Local video — client (small) */}
-        <div className="relative bg-gray-700 rounded-xl overflow-hidden" style={{ maxHeight: '130px' }}>
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-          {!localStreamRef.current && (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-              <Video className="h-8 w-8 opacity-40" />
+          {/* Main label */}
+          <div className="absolute top-3 left-3">
+            <Badge variant="secondary" className="text-xs bg-black/50 text-white border-0 backdrop-blur-sm">
+              {pipSwapped ? 'You' : 'Agent'}
+            </Badge>
+          </div>
+
+          {/* PiP overlay */}
+          <div className="absolute bottom-3 right-3 w-40 h-24 rounded-xl overflow-hidden shadow-2xl border border-white/20 bg-gray-800 group">
+            <video
+              ref={pipVideoRef}
+              autoPlay
+              playsInline
+              muted={!pipSwapped}
+              className="w-full h-full object-cover"
+            />
+
+            {(pipSwapped ? !remoteStream : !localStream) && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Video className="h-5 w-5 text-gray-500 opacity-40" />
+              </div>
+            )}
+
+            <div className="absolute bottom-1 left-1.5">
+              <Badge variant="secondary" className="text-[10px] bg-black/60 text-white border-0">
+                {pipSwapped ? 'Agent' : 'You'}
+              </Badge>
             </div>
-          )}
-          <div className="absolute bottom-2 left-2">
-            <Badge variant="secondary" className="text-xs">You</Badge>
+
+            {/* Swap button */}
+            <button
+              onClick={() => setPipSwapped((s) => !s)}
+              title="Swap cameras"
+              className="absolute top-1.5 right-1.5 h-6 w-6 rounded-full bg-black/60 hover:bg-black/90 flex items-center justify-center transition-colors"
+            >
+              <ArrowLeftRight className="h-3 w-3 text-white" />
+            </button>
           </div>
         </div>
 
         {/* Controls */}
-        <div className="flex justify-center gap-3">
-          <Button size="lg" variant={isVideoOn ? 'secondary' : 'destructive'} onClick={toggleVideo}>
+        <div className="flex justify-center gap-3 flex-shrink-0">
+          <Button size="lg" variant={isVideoOn ? 'secondary' : 'destructive'} onClick={toggleVideo} className="rounded-full h-12 w-12 p-0">
             {isVideoOn ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
           </Button>
-          <Button size="lg" variant={isAudioOn ? 'secondary' : 'destructive'} onClick={toggleAudio}>
+          <Button size="lg" variant={isAudioOn ? 'secondary' : 'destructive'} onClick={toggleAudio} className="rounded-full h-12 w-12 p-0">
             {isAudioOn ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
           </Button>
-          <Button size="lg" variant="destructive" onClick={() => { cleanup(); navigate('/client'); }}>
+          <Button size="lg" variant="destructive" onClick={() => { cleanup(); navigate('/client'); }} className="rounded-full h-12 w-12 p-0">
             <PhoneOff className="h-5 w-5" />
           </Button>
         </div>
 
-        <Card className="bg-gray-800 border-gray-700">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm text-white">What to do</CardTitle>
+        {/* Instructions */}
+        <Card className="bg-gray-800 border-gray-700 flex-shrink-0">
+          <CardHeader className="pb-2 pt-3 px-4">
+            <CardTitle className="text-sm text-white">During the call</CardTitle>
           </CardHeader>
-          <CardContent className="text-xs text-gray-400 space-y-1">
+          <CardContent className="text-xs text-gray-400 space-y-1 px-4 pb-3">
             <p>1. Make sure your face is clearly visible</p>
             <p>2. Hold your document up to the camera when asked</p>
-            <p>3. The agent will confirm your identity and approve or reject</p>
+            <p>3. The agent will confirm your identity and give the result</p>
           </CardContent>
         </Card>
       </div>
