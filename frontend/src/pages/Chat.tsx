@@ -189,9 +189,14 @@ export default function Chat({ embedded = false, onClose }: ChatProps) {
       if (data.type === 'message') {
         const incoming = data.message?.conversation_id;
         if (incoming === selectedConv?.id) {
-          setMessages((prev) => [...prev, data.message]);
+          // Deduplicate by ID — message may arrive via both broadcast + send_to_user
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === data.message.id)) return prev;
+            return [...prev, data.message];
+          });
           markConversationAsRead(selectedConv.id);
         } else if (incoming) {
+          // Message for a different conversation — update unread badge
           setConversations((prev) =>
             prev.map((c) => c.id === incoming ? { ...c, unread_count: (c.unread_count || 0) + 1 } : c)
           );

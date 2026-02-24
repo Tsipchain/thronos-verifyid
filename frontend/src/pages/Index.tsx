@@ -17,6 +17,7 @@ import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
+import LanguageSelector from '@/components/LanguageSelector';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -722,9 +723,10 @@ export default function Index() {
             <Shield className="h-8 w-8 text-blue-500" />
             <span className="text-2xl font-bold text-slate-50">VerifyID</span>
           </div>
-          <div className="flex gap-4">
+          <div className="flex items-center gap-3">
+            <LanguageSelector />
             <Button variant="ghost" className="text-slate-300 hover:text-slate-50" onClick={() => navigate('/login')}>
-              Login
+              {t('login')}
             </Button>
             <Button className="bg-blue-500 hover:bg-blue-600 text-white" onClick={() => navigate('/register')}>
               Get Started

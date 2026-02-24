@@ -7,6 +7,8 @@ from dependencies.auth import get_current_user
 from schemas.auth import UserResponse
 from services.rbac import RBACService
 from models.auth import User
+from models.chat import Conversations, ConversationParticipants
+from models.notifications import Notification
 from pydantic import BaseModel
 from schemas.chat import (
     ConversationCreate,
@@ -270,7 +272,44 @@ async def send_message(
             message_payload,
             data.conversation_id
         )
-        
+
+        # ── Deliver to participants not connected to this conversation's WS ──
+        # This fixes private messages arriving when recipient is on a different chat.
+        participants_result = await db.execute(
+            select(ConversationParticipants.user_id)
+            .where(ConversationParticipants.conversation_id == data.conversation_id)
+        )
+        participant_ids = [
+            pid for pid in participants_result.scalars().all()
+            if pid != current_user.id
+        ]
+
+        # Users already reached by the conversation broadcast
+        conv_connected = {uid for _, uid in manager.active_connections.get(data.conversation_id, [])}
+
+        for pid in participant_ids:
+            if pid not in conv_connected:
+                await manager.send_to_user(message_payload, pid)
+
+        # ── Create in-app notification for direct messages ──
+        conv_result = await db.execute(
+            select(Conversations).where(Conversations.id == data.conversation_id)
+        )
+        conv = conv_result.scalar_one_or_none()
+        if conv and conv.conversation_type == "direct":
+            sender_name = current_user.email.split('@')[0]
+            preview = (message.content or '')[:120]
+            for pid in participant_ids:
+                db.add(Notification(
+                    user_id=pid,
+                    title=f"New message from {sender_name}",
+                    body=preview if preview else None,
+                    category="general",
+                    entity_type="chat",
+                    entity_id=str(data.conversation_id),
+                ))
+            await db.commit()
+
         return message
     except HTTPException:
         raise
