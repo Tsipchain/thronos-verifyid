@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Shield, FileCheck, Video, PenTool, CheckCircle2, Lock, Brain,
@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { apiClient } from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -61,21 +62,6 @@ const CC_ICON_MAP: Record<string, React.ReactNode> = {
   own_self_managed:   <UserCheck className="h-7 w-7 text-emerald-400" />,
 };
 
-const ORG_TYPES = [
-  { code: 'taxi_school',     label: 'Σχολή Οδηγών / Taxi' },
-  { code: 'drone_operator',  label: 'Drone Operator' },
-  { code: 'fleet',           label: 'Fleet Management' },
-  { code: 'call_center',     label: 'Call Center' },
-  { code: 'other',           label: 'Άλλο' },
-];
-
-const STEP_LABELS = [
-  'Κατηγορίες',
-  'Call Center',
-  'Πλάνο',
-  'Οργανισμός',
-  'Επιβεβαίωση',
-];
 
 // ── Wizard ───────────────────────────────────────────────────────────────────
 
@@ -118,6 +104,7 @@ interface WizardProps {
 
 function PackageWizard({ open, onClose }: WizardProps) {
   const { toast } = useToast();
+  const { t } = useLanguage();
   const [step, setStep] = useState(0);
   const [state, setState] = useState<WizardState>(initWizard());
   const [submitting, setSubmitting] = useState(false);
@@ -130,7 +117,23 @@ function PackageWizard({ open, onClose }: WizardProps) {
   const [loadingCatalog, setLoadingCatalog] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
 
-  const loadCatalog = async () => {
+  const stepLabels = useMemo(() => [
+    t('wizardStepCategories'),
+    'Call Center',
+    t('wizardStepPlan'),
+    t('wizardStepOrg'),
+    t('wizardStepConfirm'),
+  ], [t]);
+
+  const orgTypes = useMemo(() => [
+    { code: 'taxi_school',    label: t('wizardOrgTypeTaxiSchool') },
+    { code: 'drone_operator', label: 'Drone Operator' },
+    { code: 'fleet',          label: 'Fleet Management' },
+    { code: 'call_center',    label: 'Call Center' },
+    { code: 'other',          label: t('wizardOrgTypeOther') },
+  ], [t]);
+
+  const loadCatalog = useCallback(async () => {
     if (catalogLoaded || loadingCatalog) return;
     setLoadingCatalog(true);
     try {
@@ -144,7 +147,6 @@ function PackageWizard({ open, onClose }: WizardProps) {
       setPlans(planRes.data);
       setCatalogLoaded(true);
     } catch {
-      // fallback to hardcoded
       setCategories(FALLBACK_CATEGORIES);
       setCcOptions(FALLBACK_CC);
       setPlans(FALLBACK_PLANS);
@@ -152,15 +154,21 @@ function PackageWizard({ open, onClose }: WizardProps) {
     } finally {
       setLoadingCatalog(false);
     }
-  };
+  }, [catalogLoaded, loadingCatalog]);
 
-  // Load catalog when modal opens
-  const handleOpen = () => {
-    setStep(0);
-    setState(initWizard());
-    setSubmitted(false);
-    loadCatalog();
-  };
+  // Reset wizard state when modal opens
+  useEffect(() => {
+    if (open) {
+      setStep(0);
+      setState(initWizard());
+      setSubmitted(false);
+    }
+  }, [open]);
+
+  // Load catalog when modal opens (idempotent — skips if already loaded)
+  useEffect(() => {
+    if (open) loadCatalog();
+  }, [open, loadCatalog]);
 
   const toggleService = (code: string) => {
     setState((prev) => {
@@ -217,7 +225,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
       });
       setSubmitted(true);
     } catch {
-      toast({ title: 'Σφάλμα', description: 'Παρακαλώ δοκιμάστε ξανά.', variant: 'destructive' });
+      toast({ title: t('error'), description: t('wizardErrorDesc'), variant: 'destructive' });
     } finally {
       setSubmitting(false);
     }
@@ -227,14 +235,14 @@ function PackageWizard({ open, onClose }: WizardProps) {
   const selectedCC = ccOptions.find((c) => c.code === state.callCenterOption);
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); else handleOpen(); }}>
+    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-2xl p-0 gap-0 bg-slate-900 border-slate-700 text-slate-100 overflow-hidden max-h-[90vh] flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-blue-400" />
-            <span className="font-semibold text-base">VerifyID — Επιλογή Πακέτου</span>
+            <span className="font-semibold text-base">{t('wizardTitle')}</span>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-100 transition-colors">
             <X className="h-5 w-5" />
@@ -245,7 +253,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
         {!submitted && (
           <div className="px-6 py-3 border-b border-slate-800 flex-shrink-0">
             <div className="flex items-center gap-1">
-              {STEP_LABELS.map((label, i) => (
+              {stepLabels.map((label, i) => (
                 <div key={i} className="flex items-center gap-1 flex-1 min-w-0">
                   <div className={`flex items-center justify-center h-6 w-6 rounded-full text-xs font-bold flex-shrink-0 ${
                     i < step ? 'bg-blue-500 text-white' :
@@ -257,7 +265,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
                   <span className={`text-[11px] truncate hidden sm:block ${i === step ? 'text-slate-200' : 'text-slate-500'}`}>
                     {label}
                   </span>
-                  {i < STEP_LABELS.length - 1 && (
+                  {i < stepLabels.length - 1 && (
                     <div className={`h-px flex-1 ${i < step ? 'bg-blue-500' : 'bg-slate-700'}`} />
                   )}
                 </div>
@@ -272,7 +280,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
           {loadingCatalog && (
             <div className="flex items-center justify-center h-40 text-slate-400 gap-3">
               <div className="animate-spin h-5 w-5 border-2 border-blue-400 border-t-transparent rounded-full" />
-              Φόρτωση κατηγοριών…
+              {t('wizardLoadingCats')}
             </div>
           )}
 
@@ -280,8 +288,8 @@ function PackageWizard({ open, onClose }: WizardProps) {
           {!loadingCatalog && step === 0 && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-semibold text-lg text-slate-100">Τι υπηρεσίες χρειάζεστε;</h3>
-                <p className="text-sm text-slate-400 mt-1">Επιλέξτε όσες κατηγορίες επιθυμείτε για τον οργανισμό σας.</p>
+                <h3 className="font-semibold text-lg text-slate-100">{t('wizardServicesTitle')}</h3>
+                <p className="text-sm text-slate-400 mt-1">{t('wizardServicesDesc')}</p>
               </div>
               <div className="grid sm:grid-cols-2 gap-3">
                 {categories.map((cat) => {
@@ -316,7 +324,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
               </div>
               {state.selectedServices.size > 0 && (
                 <p className="text-xs text-blue-400">
-                  {state.selectedServices.size} κατηγορ{state.selectedServices.size === 1 ? 'ία' : 'ίες'} επιλεγμέν{state.selectedServices.size === 1 ? 'η' : 'ες'}
+                  {state.selectedServices.size} {t('wizardStepCategories').toLowerCase()}
                 </p>
               )}
             </div>
@@ -326,8 +334,8 @@ function PackageWizard({ open, onClose }: WizardProps) {
           {!loadingCatalog && step === 1 && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-semibold text-lg text-slate-100">Μοντέλο Call Center</h3>
-                <p className="text-sm text-slate-400 mt-1">Πώς θέλετε να διαχειρίζεστε την ομάδα επαλήθευσης;</p>
+                <h3 className="font-semibold text-lg text-slate-100">{t('wizardCCTitle')}</h3>
+                <p className="text-sm text-slate-400 mt-1">{t('wizardCCDesc')}</p>
               </div>
               <div className="space-y-3">
                 {ccOptions.map((opt) => {
@@ -368,8 +376,8 @@ function PackageWizard({ open, onClose }: WizardProps) {
           {!loadingCatalog && step === 2 && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-semibold text-lg text-slate-100">Επιλέξτε Πλάνο VerifyID</h3>
-                <p className="text-sm text-slate-400 mt-1">Το πλάνο καθορίζει verifications/μήνα και αριθμό agents.</p>
+                <h3 className="font-semibold text-lg text-slate-100">{t('wizardPlanTitle')}</h3>
+                <p className="text-sm text-slate-400 mt-1">{t('wizardPlanDesc')}</p>
               </div>
               <div className="grid sm:grid-cols-3 gap-3">
                 {plans.map((plan) => {
@@ -424,14 +432,14 @@ function PackageWizard({ open, onClose }: WizardProps) {
           {!loadingCatalog && step === 3 && (
             <div className="space-y-5">
               <div>
-                <h3 className="font-semibold text-lg text-slate-100">Στοιχεία Οργανισμού</h3>
-                <p className="text-sm text-slate-400 mt-1">Συμπληρώστε τα στοιχεία επικοινωνίας και το προσωπικό σας.</p>
+                <h3 className="font-semibold text-lg text-slate-100">{t('wizardOrgTitle')}</h3>
+                <p className="text-sm text-slate-400 mt-1">{t('wizardOrgDesc')}</p>
               </div>
 
               {/* Org info */}
               <div className="grid sm:grid-cols-2 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="text-xs text-slate-400 mb-1 block">Επωνυμία εταιρείας *</label>
+                  <label className="text-xs text-slate-400 mb-1 block">{t('wizardCompanyLabel')}</label>
                   <Input
                     placeholder="π.χ. Sigma Taxi School"
                     value={state.companyName}
@@ -440,19 +448,19 @@ function PackageWizard({ open, onClose }: WizardProps) {
                   />
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400 mb-1 block">Τύπος οργανισμού</label>
+                  <label className="text-xs text-slate-400 mb-1 block">{t('wizardOrgTypeLabel')}</label>
                   <select
                     value={state.orgType}
                     onChange={(e) => setState((p) => ({ ...p, orgType: e.target.value }))}
                     className="w-full h-10 rounded-md bg-slate-800 border border-slate-600 text-slate-100 px-3 text-sm"
                   >
-                    {ORG_TYPES.map((t) => (
-                      <option key={t.code} value={t.code}>{t.label}</option>
+                    {orgTypes.map((ot) => (
+                      <option key={ot.code} value={ot.code}>{ot.label}</option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs text-slate-400 mb-1 block">Αριθμός προσωπικού</label>
+                  <label className="text-xs text-slate-400 mb-1 block">{t('wizardStaffLabel')}</label>
                   <Input
                     type="number"
                     min="1"
@@ -468,7 +476,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
               <div>
                 <p className="text-xs font-semibold text-slate-300 mb-2 flex items-center gap-1.5">
                   <UserCheck className="h-3.5 w-3.5 text-blue-400" />
-                  Γενικός Διευθυντής / Κύρια Επαφή
+                  {t('wizardPrimaryContact')}
                 </p>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <Input
@@ -499,7 +507,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
                   <p className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <Users className="h-3.5 w-3.5 text-indigo-400" />
                     Manager emails
-                    <span className="text-slate-500 font-normal">(προαιρετικό — μπορεί να έχετε και manager και διευθυντή)</span>
+                    <span className="text-slate-500 font-normal">{t('wizardManagerEmailsNote')}</span>
                   </p>
                   <Button
                     variant="ghost"
@@ -507,7 +515,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
                     onClick={addManagerEmail}
                     className="h-7 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-500/10 gap-1"
                   >
-                    <Plus className="h-3 w-3" /> Προσθήκη
+                    <Plus className="h-3 w-3" /> {t('wizardAddEmail')}
                   </Button>
                 </div>
                 <div className="space-y-2">
@@ -537,7 +545,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
 
               {/* Notes */}
               <div>
-                <label className="text-xs text-slate-400 mb-1 block">Σημειώσεις / Επιπλέον απαιτήσεις</label>
+                <label className="text-xs text-slate-400 mb-1 block">{t('wizardNotesLabel')}</label>
                 <Textarea
                   placeholder="π.χ. χρειάζομαι και domain, mailboxes, ή άλλες πληροφορίες…"
                   value={state.notes}
@@ -552,14 +560,14 @@ function PackageWizard({ open, onClose }: WizardProps) {
           {!loadingCatalog && step === 4 && !submitted && (
             <div className="space-y-4">
               <div>
-                <h3 className="font-semibold text-lg text-slate-100">Επιβεβαίωση & Αποστολή</h3>
-                <p className="text-sm text-slate-400 mt-1">Ελέγξτε τις επιλογές σας πριν αποστείλετε.</p>
+                <h3 className="font-semibold text-lg text-slate-100">{t('wizardConfirmTitle')}</h3>
+                <p className="text-sm text-slate-400 mt-1">{t('wizardConfirmDesc')}</p>
               </div>
 
               <div className="space-y-3">
                 {/* Services */}
                 <div className="rounded-xl bg-slate-800/60 border border-slate-700 p-4">
-                  <p className="text-xs text-slate-400 mb-2 font-semibold uppercase tracking-wide">Υπηρεσίες</p>
+                  <p className="text-xs text-slate-400 mb-2 font-semibold uppercase tracking-wide">{t('wizardStepCategories')}</p>
                   <div className="flex flex-wrap gap-1.5">
                     {Array.from(state.selectedServices).map((code) => {
                       const cat = categories.find((c) => c.code === code);
@@ -580,7 +588,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
 
                 {/* Plan */}
                 <div className="rounded-xl bg-slate-800/60 border border-slate-700 p-4">
-                  <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wide">Πλάνο VerifyID</p>
+                  <p className="text-xs text-slate-400 mb-1 font-semibold uppercase tracking-wide">{t('wizardStepPlan')}</p>
                   <p className="text-sm text-slate-200">
                     {selectedPlan?.name} — <span className="text-blue-400 font-bold">€{selectedPlan?.monthly_price_eur}/mo</span>
                   </p>
@@ -588,14 +596,14 @@ function PackageWizard({ open, onClose }: WizardProps) {
 
                 {/* Org */}
                 <div className="rounded-xl bg-slate-800/60 border border-slate-700 p-4">
-                  <p className="text-xs text-slate-400 mb-2 font-semibold uppercase tracking-wide">Οργανισμός</p>
+                  <p className="text-xs text-slate-400 mb-2 font-semibold uppercase tracking-wide">{t('wizardStepOrg')}</p>
                   <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                    <div className="flex gap-2"><span className="text-slate-500">Εταιρεία:</span><span className="text-slate-200">{state.companyName}</span></div>
-                    <div className="flex gap-2"><span className="text-slate-500">Τύπος:</span><span className="text-slate-200">{ORG_TYPES.find(t => t.code === state.orgType)?.label}</span></div>
-                    <div className="flex gap-2"><span className="text-slate-500">Επαφή:</span><span className="text-slate-200">{state.contactName}</span></div>
+                    <div className="flex gap-2"><span className="text-slate-500">{t('wizardCompanyLabel').replace(' *', '')}:</span><span className="text-slate-200">{state.companyName}</span></div>
+                    <div className="flex gap-2"><span className="text-slate-500">{t('wizardOrgTypeLabel')}:</span><span className="text-slate-200">{orgTypes.find(ot => ot.code === state.orgType)?.label}</span></div>
+                    <div className="flex gap-2"><span className="text-slate-500">{t('wizardPrimaryContact').split('/')[0].trim()}:</span><span className="text-slate-200">{state.contactName}</span></div>
                     <div className="flex gap-2"><span className="text-slate-500">Email:</span><span className="text-slate-200 break-all">{state.email}</span></div>
-                    <div className="flex gap-2"><span className="text-slate-500">Τηλ:</span><span className="text-slate-200">{state.phone}</span></div>
-                    <div className="flex gap-2"><span className="text-slate-500">Προσωπικό:</span><span className="text-slate-200">{state.staffCount} άτομα</span></div>
+                    <div className="flex gap-2"><span className="text-slate-500">Tel:</span><span className="text-slate-200">{state.phone}</span></div>
+                    <div className="flex gap-2"><span className="text-slate-500">{t('wizardStaffLabel')}:</span><span className="text-slate-200">{state.staffCount}</span></div>
                   </div>
                   {state.managerEmails.some((e) => e.trim()) && (
                     <div className="mt-2">
@@ -618,11 +626,9 @@ function PackageWizard({ open, onClose }: WizardProps) {
               <div className="h-16 w-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
                 <Check className="h-8 w-8 text-emerald-400" />
               </div>
-              <h3 className="text-xl font-bold text-slate-100">Αίτηση Υποβλήθηκε!</h3>
-              <p className="text-slate-400 max-w-sm text-sm">
-                Η ομάδα Thronos θα επικοινωνήσει μαζί σας εντός <strong className="text-slate-200">1-2 εργάσιμων ημερών</strong> για επιβεβαίωση και επόμενα βήματα.
-              </p>
-              <Button onClick={onClose} className="bg-blue-600 hover:bg-blue-700 mt-2">Κλείσιμο</Button>
+              <h3 className="text-xl font-bold text-slate-100">{t('wizardSuccessTitle')}</h3>
+              <p className="text-slate-400 max-w-sm text-sm">{t('wizardSuccessDesc')}</p>
+              <Button onClick={onClose} className="bg-blue-600 hover:bg-blue-700 mt-2">{t('wizardClose')}</Button>
             </div>
           )}
         </div>
@@ -636,16 +642,16 @@ function PackageWizard({ open, onClose }: WizardProps) {
               disabled={step === 0}
               className="text-slate-400 hover:text-slate-100 gap-1"
             >
-              <ChevronLeft className="h-4 w-4" /> Πίσω
+              <ChevronLeft className="h-4 w-4" /> {t('back')}
             </Button>
 
-            {step < STEP_LABELS.length - 1 ? (
+            {step < stepLabels.length - 1 ? (
               <Button
                 onClick={() => setStep((s) => s + 1)}
                 disabled={!canNext()}
                 className="bg-blue-600 hover:bg-blue-700 gap-1"
               >
-                Επόμενο <ChevronRight className="h-4 w-4" />
+                {t('next')} <ChevronRight className="h-4 w-4" />
               </Button>
             ) : (
               <Button
@@ -653,7 +659,7 @@ function PackageWizard({ open, onClose }: WizardProps) {
                 disabled={submitting || !canNext()}
                 className="bg-emerald-600 hover:bg-emerald-700 gap-1"
               >
-                {submitting ? 'Αποστολή…' : 'Υποβολή Αίτησης'}
+                {submitting ? t('wizardSubmitting') : t('wizardSubmitBtn')}
               </Button>
             )}
           </div>
@@ -676,9 +682,9 @@ const FALLBACK_CATEGORIES: ServiceCategory[] = [
 ];
 
 const FALLBACK_CC: CallCenterOption[] = [
-  { code: 'thronos_callcenter', name: 'Thronos Support Call Center',     description: 'Χρησιμοποιείτε το managed call center της Thronos με εκπαιδευμένους agents.', note: 'Απαιτείται SLA agreement με την Thronos' },
-  { code: 'own_with_support',   name: 'Δικό σας Call Center + Thronos IT', description: 'Δικό σας προσωπικό, η Thronos παρέχει τεχνική υποστήριξη & εκπαίδευση.',  note: 'IT support contract — τιμολογείται ξεχωριστά' },
-  { code: 'own_self_managed',   name: 'Δικό σας — Αυτόνομο',            description: 'Πλήρης αυτονομία, η Thronos παρέχει μόνο την πλατφόρμα.',                   note: 'Περιλαμβάνεται στο subscription' },
+  { code: 'thronos_callcenter', name: 'Thronos Support Call Center',  description: 'Use Thronos managed call center with trained verification agents.', note: 'Requires SLA agreement with Thronos' },
+  { code: 'own_with_support',   name: 'Own Call Center + Thronos IT', description: 'Your own staff, Thronos provides technical support & training.',    note: 'IT support contract — billed separately' },
+  { code: 'own_self_managed',   name: 'Own — Self Managed',           description: 'Full autonomy, Thronos provides the platform only.',                 note: 'Included in subscription' },
 ];
 
 const FALLBACK_PLANS: VerifyIDPlan[] = [
@@ -691,6 +697,7 @@ const FALLBACK_PLANS: VerifyIDPlan[] = [
 
 export default function Index() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const features = useMemo(
@@ -734,7 +741,7 @@ export default function Index() {
               Secure Identity + Business Infrastructure
             </h1>
             <p className="text-xl text-slate-400">
-              VerifyID προσφέρει έτοιμα πακέτα για εταιρικό email, Web2/Web3 domain και managed hosting μέσα στο οικοσύστημα Thronos.
+              {t('landingHeroDesc')}
             </p>
             <div className="flex flex-wrap gap-4">
               <Button size="lg" className="bg-blue-500 hover:bg-blue-600 text-white" onClick={() => navigate('/register')}>
@@ -747,7 +754,7 @@ export default function Index() {
                 onClick={() => setWizardOpen(true)}
               >
                 <Building2 className="h-5 w-5" />
-                Business Packages
+                {t('landingBusinessPackages')}
               </Button>
             </div>
             <div className="grid grid-cols-3 gap-4 pt-4">
@@ -799,10 +806,8 @@ export default function Index() {
         <Card className="bg-gradient-to-r from-blue-600 to-indigo-700 border-0">
           <CardContent className="flex flex-col md:flex-row items-center justify-between gap-6 py-8 px-6">
             <div>
-              <h3 className="text-2xl font-bold text-white">Έτοιμοι να ξεκινήσετε;</h3>
-              <p className="text-blue-100 mt-1">
-                Επιλέξτε τις υπηρεσίες που χρειάζεστε — document verification, call center, KYC, fraud detection — και διαμορφώστε το πακέτο σας.
-              </p>
+              <h3 className="text-2xl font-bold text-white">{t('landingCTATitle')}</h3>
+              <p className="text-blue-100 mt-1">{t('landingCTADesc')}</p>
             </div>
             <Button
               size="lg"
@@ -810,7 +815,7 @@ export default function Index() {
               onClick={() => setWizardOpen(true)}
             >
               <Phone className="h-5 w-5" />
-              Επικοινωνήστε μαζί μας
+              {t('landingCTABtn')}
             </Button>
           </CardContent>
         </Card>
