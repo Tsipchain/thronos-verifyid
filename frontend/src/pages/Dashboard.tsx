@@ -20,7 +20,8 @@ import {
   BarChart3,
   LogOut,
   Bot,
-  Car
+  Car,
+  Building2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/contexts/LanguageContext';
@@ -129,6 +130,15 @@ export default function Dashboard() {
       show: rbac.canAccessVerifications(),
       color: 'text-indigo-600 dark:text-indigo-400',
       bgColor: 'bg-indigo-50 dark:bg-indigo-900/20'
+    },
+    {
+      title: 'Organisations',
+      description: 'SaaS subscribers, plans & widget keys',
+      icon: Building2,
+      path: '/admin/organizations',
+      show: rbac.canManageOrganizations(),
+      color: 'text-rose-600 dark:text-rose-400',
+      bgColor: 'bg-rose-50 dark:bg-rose-900/20'
     },
     {
       title: t('chat'),

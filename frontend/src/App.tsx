@@ -22,6 +22,7 @@ import AgentVideoCall from './pages/AgentVideoCall';
 import ClientVideoCall from './pages/ClientVideoCall';
 import DriverVerification from './pages/DriverVerification';
 import DriverVerifications from './pages/DriverVerifications';
+import Organizations from './pages/Organizations';
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ const App = () => {
             
             <Route path="/admin/verifications" element={<Verifications />} />
             <Route path="/admin/driver-verifications" element={<DriverVerifications />} />
+            <Route path="/admin/organizations" element={<Organizations />} />
             <Route path="/admin/chat" element={<Chat />} />
             <Route path="/admin/users" element={<UsersPage />} />
             <Route path="/admin/reports" element={<PerformanceDashboard />} />
