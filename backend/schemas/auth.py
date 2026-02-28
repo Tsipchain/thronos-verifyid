@@ -68,3 +68,4 @@ class TokenExchangeResponse(BaseModel):
     """Response body for issued application token."""
 
     token: str
+    redirect_url: Optional[str] = None  # set for CareerForge cross-link SSO

@@ -356,3 +356,29 @@ async def logout():
     """Logout user."""
     logout_url = build_logout_url()
     return {"redirect_url": logout_url}
+
+
+@router.get("/careerforge-link", response_model=TokenExchangeResponse)
+async def careerforge_link(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    CareerForge SSO cross-link.
+
+    Issues a short-lived JWT with `aud=careerforge`, `verifyid_verified`,
+    `tenant_id`, and `scopes` claims so the user can seamlessly log into
+    CareerForge from the VerifyID dashboard.
+
+    Returns the token plus the redirect URL to CareerForge with the token
+    embedded as a query parameter (`?sso_token=<jwt>`).
+    """
+    auth_service = AuthService(db)
+    token, _, _ = await auth_service.issue_app_token(user=current_user)
+
+    careerforge_base = os.getenv(
+        "CAREERFORGE_UI_URL", "https://careerforge.thronoschain.org"
+    )
+    redirect_url = f"{careerforge_base}/sso?token={token}"
+
+    return {"token": token, "redirect_url": redirect_url}
