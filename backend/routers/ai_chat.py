@@ -1,7 +1,8 @@
 """AI Chat endpoint for Agent Dashboard modal.
 
 Simple chat interface for agents without credit billing.
-Forwards requests to Thronos AI Core (ai.thronoschain.org).
+Forwards to /v1/assistant/ask on AI Core so the assistant answers as
+VerifyID Assistant (KYC specialist), not as the generic Thronos AI.
 
 This is separate from the credit-billed ai_assistant router.
 """
@@ -33,10 +34,8 @@ async def agent_chat(
 ):
     """Free AI chat for Agent Dashboard modal.
 
-    This endpoint is intentionally very simple:
-    - No credit billing
-    - Just forwards to AI Core `/api/chat`
-    - Returns raw JSON dict (no Pydantic response_model)
+    Calls /v1/assistant/ask on AI Core — the KYC-specific endpoint —
+    so the assistant answers as VerifyID Assistant, not as Thronos AI.
     """
     if not AI_KEY:
         logger.error("[AI Chat] APP_AI_KEY not configured")
@@ -47,18 +46,15 @@ async def agent_chat(
     try:
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(
-                f"{AI_CORE_URL}/api/chat",
+                f"{AI_CORE_URL}/v1/assistant/ask",
                 json={
-                    "message": payload.message,
-                    "context": payload.context or "VerifyID Agent",
-                    "system_prompt": (
-                        "You are a helpful AI assistant for VerifyID KYC agents. "
-                        "Provide concise, professional answers about KYC processes, "
-                        "fraud detection, and document verification."
-                    ),
+                    "prompt": payload.message,
+                    "context": payload.context or "",
+                    "role": "agent",
+                    "service": "verifyid",
                 },
                 headers={
-                    "X-Internal-Key": AI_KEY,
+                    "X-API-Key": AI_KEY,
                     "Content-Type": "application/json",
                 },
             )
@@ -68,13 +64,13 @@ async def agent_chat(
                 raise HTTPException(502, "AI Core unavailable")
 
             data = response.json() or {}
-            logger.info("[AI Chat] Response: %d chars", len(data.get("response", "")))
+            answer = data.get("answer") or data.get("response") or "No response from AI"
+            logger.info("[AI Chat] Response: %d chars", len(answer))
 
-            # Return plain dict to avoid any Pydantic serialization edge cases
             return {
-                "response": data.get("response", "No response from AI"),
-                "model": data.get("model", "claude-sonnet-4.5"),
-                "tokens_used": data.get("tokens_used", 0),
+                "response": answer,
+                "model": "verifyid-assistant",
+                "tokens_used": 0,
             }
 
     except httpx.TimeoutException:
