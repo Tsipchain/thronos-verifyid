@@ -28,6 +28,7 @@ from schemas.verifications import (
     VideoVerificationResponse,
 )
 from services.verifications import VerificationService
+from services.careerforge_notify import notify_verification_complete
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,10 @@ async def manager_finalize(
         "Manager %s finalized verification %s → %s",
         current_user.id, verification_id, verification.verification_status.value,
     )
+
+    # Grant one free CareerForge pack to newly verified users
+    if verification.verification_status == VerificationStatus.COMPLETED:
+        await notify_verification_complete(verification.user_id, verification.id)
 
     return {
         "id": verification.id,
