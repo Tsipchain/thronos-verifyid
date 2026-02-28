@@ -78,11 +78,17 @@ class DatabaseManager:
         if "sqlite" not in raw_url:
             return True
         filename = raw_url.split(":///", 1)[1]
-        found = Path(filename).exists()
+        db_path = Path(filename)
+        # Auto-create parent directory (e.g. volume mount point that exists but is empty)
+        try:
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.warning(f"Could not create directory for SQLite db {db_path.parent}: {exc}")
+        found = db_path.exists()
         if found:
             logger.debug(f"Database exists:{filename}")
         else:
-            logger.error(f"Database not found:{filename}")
+            logger.info(f"Database will be created at: {filename}")
         return found
 
     async def init_db(self):
