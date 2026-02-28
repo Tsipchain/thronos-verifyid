@@ -120,7 +120,18 @@ def decode_access_token(token: str) -> Dict[str, Any]:
         raise AccessTokenError("Authentication service is misconfigured")
 
     try:
-        payload = jwt.decode(token, core_settings.jwt_secret_key, algorithms=[core_settings.jwt_algorithm])
+        # options={"verify_aud": False} — verifyid tokens may carry an `aud`
+        # claim (e.g. "verifyid" or "careerforge" for SSO tokens).  python-jose
+        # raises JWTClaimsError when `aud` is present but no audience is passed
+        # to decode().  Since verifyid signs with HS256 (symmetric key only it
+        # holds), skipping audience enforcement is safe here; the signature check
+        # is the trust anchor.
+        payload = jwt.decode(
+            token,
+            core_settings.jwt_secret_key,
+            algorithms=[core_settings.jwt_algorithm],
+            options={"verify_aud": False},
+        )
         # Log user hash instead of actual user ID to avoid exposing sensitive information
         user_id = payload.get("sub", "unknown")
         user_hash = hashlib.sha256(str(user_id).encode()).hexdigest()[:8] if user_id != "unknown" else "unknown"

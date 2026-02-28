@@ -374,7 +374,14 @@ async def careerforge_link(
     embedded as a query parameter (`?sso_token=<jwt>`).
     """
     auth_service = AuthService(db)
-    token, _, _ = await auth_service.issue_app_token(user=current_user)
+    # Issue a short-lived (10 min) cross-app SSO token explicitly for CareerForge.
+    # audience="careerforge" so CareerForge can validate the aud claim.
+    # Normal verifyid sessions use audience="verifyid" via the login endpoints.
+    token, _, _ = await auth_service.issue_app_token(
+        user=current_user,
+        audience="careerforge",
+        expires_minutes=10,
+    )
 
     careerforge_base = os.getenv(
         "CAREERFORGE_UI_URL", "https://careerforge.thronoschain.org"
