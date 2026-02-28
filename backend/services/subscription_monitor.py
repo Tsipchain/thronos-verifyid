@@ -16,6 +16,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta
 
+from asyncpg.exceptions import InvalidPasswordError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -148,6 +149,13 @@ async def run_subscription_monitor() -> None:
         try:
             async for db in get_db():
                 await _check_expirations(db)
+        except InvalidPasswordError as exc:
+            logger.error(
+                "Subscription monitor disabled due to invalid database credentials: %s. "
+                "Please verify DATABASE_URL.",
+                exc,
+            )
+            return
         except Exception as exc:
             logger.error("Subscription monitor error: %s", exc, exc_info=True)
         await asyncio.sleep(_CHECK_INTERVAL_SECONDS)
