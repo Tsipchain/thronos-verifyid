@@ -68,9 +68,12 @@ async def lifespan(app: FastAPI):
 
     # MODULE_STARTUP_START
     validate_environment()
-    await initialize_database()
-    await initialize_mock_data()
-    await initialize_admin_user()
+    try:
+        await initialize_database()
+        await initialize_mock_data()
+        await initialize_admin_user()
+    except Exception as e:
+        logger.error(f"Startup initialization failed (app will continue without full DB access): {e}")
     # MODULE_STARTUP_END
 
     # Start the background queue monitor (AI agent fallback after 15 min)
