@@ -2,10 +2,14 @@
 
 import httpx
 import logging
-from typing import Optional
+import os
 from core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# Auth key: same APP_AI_KEY used throughout the AI Core / VerifyID integration
+def _ai_key() -> str:
+    return os.getenv("APP_AI_KEY", "") or settings.thronos_ai_internal_key
 
 
 class AIHubClient:
@@ -13,26 +17,17 @@ class AIHubClient:
 
     @staticmethod
     async def analyze_document(payload: dict) -> dict:
-        """
-        Analyze document for fraud detection.
-        
-        Args:
-            payload: Document metadata and features
-            
+        """Analyze document for fraud detection.
+
         Returns:
-            {
-                "fraud_score": int,
-                "risk_level": str,
-                "explanation": str,
-                "flags": list
-            }
+            {"fraud_score": int, "risk_level": str, "explanation": str, "flags": list}
         """
-        url = f"{settings.THRONOS_AI_CORE_URL}/api/v1/fraud/document"
+        url = f"{settings.thronos_ai_core_url}/v1/fraud/document"
         headers = {
-            "X-API-Key": settings.THRONOS_AI_INTERNAL_KEY,
+            "X-API-Key": _ai_key(),
             "Content-Type": "application/json",
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=20.0) as client:
                 response = await client.post(url, json=payload, headers=headers)
@@ -40,7 +35,6 @@ class AIHubClient:
                 return response.json()
         except httpx.HTTPError as e:
             logger.error(f"AI Hub document analysis failed: {e}")
-            # Return safe defaults on error
             return {
                 "fraud_score": 50,
                 "risk_level": "medium",
@@ -54,34 +48,29 @@ class AIHubClient:
         context: str = "",
         user_role: str = "agent",
     ) -> dict:
-        """
-        Ask AI Assistant for help.
-        
+        """Ask VerifyID AI Assistant for KYC help.
+
         Args:
             prompt: User's question
             context: Additional context (verification ID, document type, etc.)
             user_role: agent | manager | admin
-            
+
         Returns:
-            {
-                "answer": str,
-                "confidence": float,
-                "sources": list
-            }
+            {"answer": str, "confidence": float, "sources": list}
         """
-        url = f"{settings.THRONOS_AI_CORE_URL}/api/v1/assistant/ask"
+        url = f"{settings.thronos_ai_core_url}/v1/assistant/ask"
         headers = {
-            "X-API-Key": settings.THRONOS_AI_INTERNAL_KEY,
+            "X-API-Key": _ai_key(),
             "Content-Type": "application/json",
         }
-        
+
         payload = {
             "prompt": prompt,
             "context": context,
             "role": user_role,
             "service": "verifyid",
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=30.0) as client:
                 response = await client.post(url, json=payload, headers=headers)
@@ -94,10 +83,10 @@ class AIHubClient:
     @staticmethod
     async def health_check() -> bool:
         """Check if AI Core is reachable."""
-        url = f"{settings.THRONOS_AI_CORE_URL}/health"
+        url = f"{settings.thronos_ai_core_url}/health"
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(url)
                 return response.status_code == 200
-        except:
+        except Exception:
             return False
