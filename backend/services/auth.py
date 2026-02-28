@@ -101,11 +101,27 @@ class AuthService:
         expires_minutes = int(settings.jwt_expire_minutes)
         expires_at = now + timedelta(minutes=expires_minutes)
 
+        # Determine verification status and tenant_id
+        verifyid_verified = getattr(user, "verifyid_verified", False) or bool(
+            getattr(user, "is_active", False)
+        )
+        tenant_id = getattr(user, "tenant_id", None) or f"ten_{user.id[:16]}"
+
+        # Base scopes for all users; write scope requires verified identity
+        scopes = ["careerforge:read"]
+        if verifyid_verified:
+            scopes.append("careerforge:write")
+
         claims = {
+            "iss": os.getenv("JWT_ISSUER", "https://gateway.thronoschain.org"),
+            "aud": os.getenv("JWT_AUDIENCE", "careerforge"),
             "sub": user.id,
             "email": user.email,
             "name": user.name,
             "role": user.role,
+            "tenant_id": tenant_id,
+            "verifyid_verified": verifyid_verified,
+            "scopes": scopes,
             "last_login": now.isoformat(),
         }
         token = create_access_token(claims, expires_minutes=expires_minutes)
