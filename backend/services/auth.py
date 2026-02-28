@@ -96,10 +96,12 @@ class AuthService:
         await self.db.refresh(user)
         return user
 
-    async def issue_app_token(self, user: User) -> tuple[str, datetime, dict]:
+    async def issue_app_token(
+        self, user: User, audience: str = "verifyid", expires_minutes: int | None = None
+    ) -> tuple[str, datetime, dict]:
         now = datetime.now(timezone.utc)
-        expires_minutes = int(settings.jwt_expire_minutes)
-        expires_at = now + timedelta(minutes=expires_minutes)
+        ttl = expires_minutes if expires_minutes is not None else int(settings.jwt_expire_minutes)
+        expires_at = now + timedelta(minutes=ttl)
 
         # Determine verification status and tenant_id
         verifyid_verified = getattr(user, "verifyid_verified", False) or bool(
@@ -113,8 +115,11 @@ class AuthService:
             scopes.append("careerforge:write")
 
         claims = {
+            # aud=verifyid for normal sessions; aud=careerforge for SSO cross-link.
+            # decode_access_token() skips aud enforcement (verify_aud=False) so
+            # verifyid sessions are not broken by the presence of this claim.
             "iss": os.getenv("JWT_ISSUER", "https://gateway.thronoschain.org"),
-            "aud": os.getenv("JWT_AUDIENCE", "careerforge"),
+            "aud": audience,
             "sub": user.id,
             "email": user.email,
             "name": user.name,
@@ -124,7 +129,7 @@ class AuthService:
             "scopes": scopes,
             "last_login": now.isoformat(),
         }
-        token = create_access_token(claims, expires_minutes=expires_minutes)
+        token = create_access_token(claims, expires_minutes=ttl)
         return token, expires_at, claims
 
     async def get_or_create_user(self, platform_sub: str, email: str, name: Optional[str] = None) -> User:
