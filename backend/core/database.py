@@ -51,6 +51,12 @@ class DatabaseManager:
         # Already async drivers
         if "+aiosqlite" in drivername or "+asyncpg" in drivername or "+aiomysql" in drivername:
             self._check_db_exist(raw_url)
+            # asyncpg doesn't support sslmode as a URL query param — strip it
+            if "+asyncpg" in drivername and "sslmode" in url.query:
+                new_query = {k: v for k, v in url.query.items() if k != "sslmode"}
+                url = url.set(query=new_query)
+                logger.warning("Stripped sslmode from asyncpg URL (use connect_args instead)")
+                return str(url)
             return raw_url
 
         # Map common sync schemes to async equivalents
@@ -58,7 +64,9 @@ class DatabaseManager:
             url = url.set(drivername="sqlite+aiosqlite")
             self._check_db_exist(raw_url)
         elif drivername in ("postgresql", "postgres"):
-            url = url.set(drivername="postgresql+asyncpg")
+            # asyncpg doesn't support sslmode as a URL query param — strip it here
+            new_query = {k: v for k, v in url.query.items() if k != "sslmode"}
+            url = url.set(drivername="postgresql+asyncpg", query=new_query)
         elif drivername in ("mysql",):
             url = url.set(drivername="mysql+aiomysql")
         elif drivername in ("mariadb",):
@@ -113,6 +121,12 @@ class DatabaseManager:
             engine_kwargs = {
                 "echo": settings.debug,
             }
+
+            # asyncpg: SSL must be passed via connect_args, not as a URL sslmode param
+            original_url = settings.database_url or ""
+            if "asyncpg" in database_url and "sslmode=require" in original_url:
+                engine_kwargs["connect_args"] = {"ssl": True}
+                logger.info("asyncpg SSL enabled via connect_args (sslmode=require detected)")
 
             # Check if we're in a Lambda environment
             is_lambda = bool(
