@@ -237,9 +237,13 @@ class DatabaseManager:
         required_columns = [
             ("email", "VARCHAR(255)", None),
             ("name", "VARCHAR(255)", None),
+            ("role", "VARCHAR(50)", "DEFAULT 'client'"),
             ("password_hash", "VARCHAR(255)", None),
             ("password_salt", "VARCHAR(255)", None),
+            ("is_active", "BOOLEAN", "DEFAULT TRUE"),
             ("productivity_points", "INTEGER", "DEFAULT 0"),
+            ("created_at", "TIMESTAMPTZ", "DEFAULT now()"),
+            ("last_login", "TIMESTAMPTZ", None),
         ]
 
         try:
