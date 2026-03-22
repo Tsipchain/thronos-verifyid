@@ -236,6 +236,7 @@ class DatabaseManager:
         # Each entry: (column_name, SQL type, default clause or None)
         required_columns = [
             ("email", "VARCHAR(255)", None),
+            ("name", "VARCHAR(255)", None),
             ("password_hash", "VARCHAR(255)", None),
             ("password_salt", "VARCHAR(255)", None),
             ("productivity_points", "INTEGER", "DEFAULT 0"),
