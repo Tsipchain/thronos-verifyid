@@ -1,5 +1,5 @@
 /**
- * DriverVerification — self-service page for DriverIntelligent drivers
+ * DriverVerification — self-service page for VerifyID drivers
  * ("pirates") to submit and track their program verification.
  *
  * Supports:
@@ -467,7 +467,7 @@ export default function DriverVerification() {
             <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4">
               <Shield className="h-8 w-8 text-white" />
             </div>
-            <h1 className="text-3xl font-bold text-gray-900">DriverIntelligent</h1>
+            <h1 className="text-3xl font-bold text-gray-900">VerifyID</h1>
             <p className="text-gray-500 mt-2">
               Blockchain-secured driver verification · Powered by Thronos
             </p>
@@ -740,7 +740,7 @@ export default function DriverVerification() {
           <TrackingView ver={activeVer} />
 
           <div className="mt-8 text-center text-xs text-gray-400">
-            Powered by Thronos VerifyID · DriverIntelligent Programme
+            Powered by Thronos VerifyID
           </div>
         </div>
       </div>

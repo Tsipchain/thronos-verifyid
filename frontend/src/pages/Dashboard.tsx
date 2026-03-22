@@ -126,7 +126,7 @@ export default function Dashboard() {
     },
     {
       title: 'Driver Verifications',
-      description: 'DriverIntelligent taxi & drone program',
+      description: 'VerifyID taxi & drone program',
       icon: Car,
       path: '/admin/driver-verifications',
       show: rbac.canAccessVerifications(),

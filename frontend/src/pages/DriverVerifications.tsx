@@ -1,7 +1,7 @@
 /**
  * DriverVerifications — admin / manager / call-agent oversight page.
  *
- * Shows all DriverIntelligent program verifications with:
+ * Shows all VerifyID program verifications with:
  *  - Sub-verification step details & miner signatures
  *  - Sign-step action (manager/admin can sign each step)
  *  - Manager finalize (seal / reject) with full blockchain proof
@@ -509,7 +509,7 @@ export default function DriverVerifications() {
             </Button>
             <Shield className="h-6 w-6 text-blue-600" />
             <div>
-              <h1 className="text-xl font-bold">DriverIntelligent Verifications</h1>
+              <h1 className="text-xl font-bold">VerifyID Driver Verifications</h1>
               <p className="text-sm text-gray-500">
                 {verifications.length} total
                 {taxiCount > 0 && (

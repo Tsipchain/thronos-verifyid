@@ -1,5 +1,5 @@
 """
-DriverIntelligent verification router.
+VerifyID driver verification router.
 
 Handles the full lifecycle of a driver ('pirate') verification for:
   - taxi_school  – taxi driving school enrolment
