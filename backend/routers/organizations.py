@@ -430,8 +430,8 @@ async def get_widget_snippet(
         )
 
     snippet = (
-        f'<!-- DriverIntelligent Verification Widget -->\n'
-        f'<div id="driverintelligent-widget"></div>\n'
+        f'<!-- VerifyID Verification Widget -->\n'
+        f'<div id="verifyid-widget"></div>\n'
         f'<script\n'
         f'  src="https://verifyid.thronoschain.org/widget.js"\n'
         f'  data-api-key="{org.widget_api_key}"\n'

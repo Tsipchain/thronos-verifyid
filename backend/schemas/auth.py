@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 class UserResponse(BaseModel):
     id: str  # Now a string UUID (platform sub)
-    email: str
+    email: Optional[str] = None
     name: Optional[str] = None
     role: str = "client"  # client/agent/manager/admin
     last_login: Optional[datetime] = None
@@ -17,7 +17,7 @@ class UserResponse(BaseModel):
 
 class AdminUserResponse(BaseModel):
     id: str
-    email: str
+    email: Optional[str] = None
     name: Optional[str] = None
     role: str
     is_active: bool

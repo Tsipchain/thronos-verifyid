@@ -1,7 +1,7 @@
 /**
  * Organizations — SaaS subscriber management page (admin-only).
  *
- * Shows every organization that has purchased access to the DriverIntelligent
+ * Shows every organization that has purchased access to the VerifyID
  * verification platform.  Admins can:
  *   - View all subscriptions with plan, status, usage
  *   - Create a new subscriber organization
@@ -267,7 +267,7 @@ function SnippetModal({
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-800 space-y-1">
               <p className="font-semibold">How to integrate:</p>
               <p>1. Paste the script tag into your website's HTML.</p>
-              <p>2. The widget will automatically mount into <code>#driverintelligent-widget</code>.</p>
+              <p>2. The widget will automatically mount into <code>#verifyid-widget</code>.</p>
               <p>3. All verification data flows through the Thronos central platform — your organization retains full oversight via the admin panel.</p>
             </div>
           </>
@@ -305,6 +305,7 @@ function CreateOrgModal({
     try {
       await apiClient.post('/api/v1/organizations', {
         ...form,
+        contact_name: form.contact_name || undefined,
         country: form.country || undefined,
         contact_phone: form.contact_phone || undefined,
         admin_notes: form.admin_notes || undefined,
@@ -677,7 +678,7 @@ function OrgCard({
                     size="sm"
                     className="bg-green-600 hover:bg-green-700 text-white"
                     disabled={actionLoading !== null}
-                    onClick={() => action('confirm-payment', 'Reactivate')}
+                    onClick={() => action('activate', 'Reactivate')}
                   >
                     <Power className="h-3 w-3 mr-1" />
                     {actionLoading === 'Reactivate' ? 'Reactivating…' : 'Reactivate'}
@@ -813,7 +814,7 @@ export default function Organizations() {
               <div>
                 <h1 className="text-xl font-bold">Subscriber Organisations</h1>
                 <p className="text-sm text-gray-500">
-                  SaaS tenants using the DriverIntelligent platform
+                  SaaS tenants using the VerifyID platform
                 </p>
               </div>
             </div>

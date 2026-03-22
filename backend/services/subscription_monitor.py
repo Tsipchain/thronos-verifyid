@@ -119,18 +119,18 @@ def _send_expiry_email(org: Organization, days_left: int, urgent: bool) -> None:
             return
 
         subject_prefix = "URGENT: " if urgent else ""
-        subject = f"{subject_prefix}Your DriverIntelligent subscription expires in {days_left} day(s)"
+        subject = f"{subject_prefix}Your VerifyID subscription expires in {days_left} day(s)"
         html = f"""
         <h2>{'⚠️ Urgent: ' if urgent else ''}Subscription Expiry Notice</h2>
         <p>Dear {org.contact_name or org.name},</p>
-        <p>Your <strong>DriverIntelligent</strong> subscription ({org.plan} plan)
+        <p>Your <strong>VerifyID</strong> subscription ({org.plan} plan)
            will expire in <strong>{days_left} day(s)</strong>
            on <strong>{org.plan_expires_at.strftime('%d %B %Y')}</strong>.</p>
         <p>To avoid interruption to your service and loss of access to your widget API key,
            please renew your subscription as soon as possible.</p>
         <p>If you need assistance, please open a support ticket or contact your
            Thronos account manager.</p>
-        <p>Best regards,<br/>The Thronos DriverIntelligent Team</p>
+        <p>Best regards,<br/>The Thronos VerifyID Team</p>
         """
         EmailService.send_email(
             to_email=org.contact_email,

@@ -145,7 +145,7 @@ class DriverProgramStatus(str, enum.Enum):
 
 class DriverProgramVerifications(Base):
     """
-    DriverIntelligent program verification — records the full lifecycle of a
+    VerifyID program verification — records the full lifecycle of a
     driver ('pirate') verification for a specific program (taxi school or drone).
 
     Sub-verifications are stored as a JSON array in `sub_verifications`, each

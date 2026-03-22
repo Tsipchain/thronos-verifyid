@@ -1,8 +1,8 @@
 """
-SaaS tenant models for DriverIntelligent white-label resale.
+SaaS tenant models for VerifyID white-label resale.
 
 An Organization is any external entity (taxi school, drone operator, fleet
-company, call center) that purchases access to the DriverIntelligent
+company, call center) that purchases access to the VerifyID
 verification platform.  They bring their own staff and call-centre and embed
 the verification widget on their own systems.
 
