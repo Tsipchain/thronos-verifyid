@@ -61,6 +61,19 @@ class AuthService:
         result = await self.db.execute(select(User).where(User.email == email))
         existing = result.scalar_one_or_none()
         if existing:
+            # If user exists but has no local password, set it (e.g. OIDC-created users)
+            if not existing.password_hash or not existing.password_salt:
+                logger.info(f"Setting local password for existing user: {email}")
+                salt = secrets.token_hex(16)
+                existing.password_hash = hash_password(password, salt)
+                existing.password_salt = salt
+                if name and not existing.name:
+                    existing.name = name
+                if not existing.is_active:
+                    existing.is_active = True
+                await self.db.commit()
+                await self.db.refresh(existing)
+                return existing
             raise ValueError("Email already registered")
 
         salt = secrets.token_hex(16)
@@ -83,10 +96,15 @@ class AuthService:
     async def authenticate_local_user(self, email: str, password: str) -> Optional[User]:
         result = await self.db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
-        if not user or not user.password_salt or not user.password_hash:
+        if not user:
+            logger.warning(f"[auth] User not found: {email}")
+            return None
+        if not user.password_salt or not user.password_hash:
+            logger.warning(f"[auth] User {email} has no local password set (password_hash={bool(user.password_hash)}, password_salt={bool(user.password_salt)})")
             return None
 
         if user.password_hash != hash_password(password, user.password_salt):
+            logger.warning(f"[auth] Password mismatch for user: {email}")
             return None
 
         user.last_login = datetime.now(timezone.utc)

@@ -132,8 +132,21 @@ async def create_user(
         )
 
     # Check if email already exists
-    existing = await db.execute(select(User).where(User.email == payload.email))
-    if existing.scalar_one_or_none():
+    existing_result = await db.execute(select(User).where(User.email == payload.email))
+    existing = existing_result.scalar_one_or_none()
+    if existing:
+        # If user exists but has no password, set it and update role
+        if not existing.password_hash or not existing.password_salt:
+            salt, password_hash = AuthService.generate_password_hash(payload.password)
+            existing.password_hash = password_hash
+            existing.password_salt = salt
+            existing.role = payload.role
+            if payload.name:
+                existing.name = payload.name
+            existing.is_active = True
+            await db.commit()
+            await db.refresh(existing)
+            return existing
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email already registered",
