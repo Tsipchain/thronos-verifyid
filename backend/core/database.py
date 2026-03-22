@@ -196,9 +196,7 @@ class DatabaseManager:
                 logger.error("Database engine not initialized")
                 raise RuntimeError("Database engine not initialized")
 
-            # logger.info("🔧 Starting table structure repair...")
-            # await self.check_and_repair_existing_tables()
-            # logger.info("🔧 Table structure repair completed")
+            await self._ensure_users_table_columns()
 
             try:
                 logger.info("🔧 Starting table creation...")
@@ -222,6 +220,67 @@ class DatabaseManager:
                 raise
         finally:
             self._table_creation_lock.release()
+
+    async def _ensure_users_table_columns(self):
+        """Ensure the users table has all required columns.
+
+        The users table is excluded from Alembic migrations, so new columns
+        added to the User model may be missing in production. This method
+        safely adds any missing columns via ALTER TABLE without dropping
+        existing data or affecting other tables.
+        """
+        if not self.engine:
+            return
+
+        # Columns that may be missing from the production users table.
+        # Each entry: (column_name, SQL type, default clause or None)
+        required_columns = [
+            ("email", "VARCHAR(255)", None),
+            ("password_hash", "VARCHAR(255)", None),
+            ("password_salt", "VARCHAR(255)", None),
+            ("productivity_points", "INTEGER", "DEFAULT 0"),
+        ]
+
+        try:
+            async with self.engine.begin() as conn:
+                # Check if users table exists first
+                if self.engine.dialect.name == "postgresql":
+                    result = await conn.execute(
+                        text(
+                            "SELECT column_name FROM information_schema.columns "
+                            "WHERE table_schema = 'public' AND table_name = 'users'"
+                        )
+                    )
+                elif self.engine.dialect.name == "sqlite":
+                    result = await conn.execute(text("PRAGMA table_info(users)"))
+                else:
+                    logger.debug("Skipping users table column check for unsupported dialect")
+                    return
+
+                rows = result.fetchall()
+                if not rows:
+                    # Table doesn't exist yet; create_all will handle it
+                    logger.debug("users table does not exist yet, skipping column check")
+                    return
+
+                if self.engine.dialect.name == "sqlite":
+                    existing_columns = {row[1] for row in rows}
+                else:
+                    existing_columns = {row[0] for row in rows}
+
+                for col_name, col_type, col_default in required_columns:
+                    if col_name not in existing_columns:
+                        default_clause = f" {col_default}" if col_default else ""
+                        alter_sql = (
+                            f"ALTER TABLE users ADD COLUMN {col_name} {col_type}{default_clause}"
+                        )
+                        await conn.execute(DDL(alter_sql))
+                        logger.info(
+                            f"Added missing column '{col_name}' to users table"
+                        )
+
+        except Exception as e:
+            logger.error(f"Failed to ensure users table columns: {e}", exc_info=True)
 
     async def check_and_repair_existing_tables(self):
         """Check and fix the structure of existing tables, adding only the missing fields."""
