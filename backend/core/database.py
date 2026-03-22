@@ -265,7 +265,7 @@ class DatabaseManager:
                 rows = result.fetchall()
                 if not rows:
                     # Table doesn't exist yet; create_all will handle it
-                    logger.debug("users table does not exist yet, skipping column check")
+                    logger.info("users table does not exist yet, will be created by create_all")
                     return
 
                 if self.engine.dialect.name == "sqlite":
@@ -273,19 +273,39 @@ class DatabaseManager:
                 else:
                     existing_columns = {row[0] for row in rows}
 
+                logger.info(f"Users table has columns: {existing_columns}")
+
+                added_count = 0
                 for col_name, col_type, col_default in required_columns:
                     if col_name not in existing_columns:
                         default_clause = f" {col_default}" if col_default else ""
                         alter_sql = (
                             f"ALTER TABLE users ADD COLUMN {col_name} {col_type}{default_clause}"
                         )
-                        await conn.execute(DDL(alter_sql))
-                        logger.info(
-                            f"Added missing column '{col_name}' to users table"
-                        )
+                        try:
+                            await conn.execute(DDL(alter_sql))
+                            added_count += 1
+                            logger.info(
+                                f"✅ Added missing column '{col_name}' to users table"
+                            )
+                        except Exception as col_err:
+                            if "already exists" in str(col_err).lower() or "duplicate column" in str(col_err).lower():
+                                logger.debug(f"Column '{col_name}' already exists, skipping")
+                            else:
+                                logger.error(f"❌ Failed to add column '{col_name}': {col_err}")
+
+                if added_count > 0:
+                    logger.info(f"✅ Added {added_count} missing columns to users table")
+                else:
+                    logger.info("Users table schema is up to date")
 
         except Exception as e:
-            logger.error(f"Failed to ensure users table columns: {e}", exc_info=True)
+            logger.error(f"❌ Failed to ensure users table columns: {e}", exc_info=True)
+            # Don't silently swallow — log prominently so it's visible in deploy logs
+            logger.error(
+                "⚠️  CRITICAL: Users table may be missing required columns. "
+                "Login/registration will fail until this is resolved."
+            )
 
     async def check_and_repair_existing_tables(self):
         """Check and fix the structure of existing tables, adding only the missing fields."""
