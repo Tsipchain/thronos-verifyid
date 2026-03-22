@@ -279,11 +279,17 @@ class DatabaseManager:
                 for col_name, col_type, col_default in required_columns:
                     if col_name not in existing_columns:
                         default_clause = f" {col_default}" if col_default else ""
-                        alter_sql = (
-                            f"ALTER TABLE users ADD COLUMN {col_name} {col_type}{default_clause}"
-                        )
+                        # Use IF NOT EXISTS for PostgreSQL to avoid race conditions
+                        if self.engine.dialect.name == "postgresql":
+                            alter_sql = (
+                                f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_type}{default_clause}"
+                            )
+                        else:
+                            alter_sql = (
+                                f"ALTER TABLE users ADD COLUMN {col_name} {col_type}{default_clause}"
+                            )
                         try:
-                            await conn.execute(DDL(alter_sql))
+                            await conn.execute(text(alter_sql))
                             added_count += 1
                             logger.info(
                                 f"✅ Added missing column '{col_name}' to users table"
@@ -293,6 +299,7 @@ class DatabaseManager:
                                 logger.debug(f"Column '{col_name}' already exists, skipping")
                             else:
                                 logger.error(f"❌ Failed to add column '{col_name}': {col_err}")
+                                raise  # Re-raise so we know startup failed
 
                 if added_count > 0:
                     logger.info(f"✅ Added {added_count} missing columns to users table")
@@ -301,11 +308,11 @@ class DatabaseManager:
 
         except Exception as e:
             logger.error(f"❌ Failed to ensure users table columns: {e}", exc_info=True)
-            # Don't silently swallow — log prominently so it's visible in deploy logs
             logger.error(
                 "⚠️  CRITICAL: Users table may be missing required columns. "
                 "Login/registration will fail until this is resolved."
             )
+            raise  # Don't silently swallow — fail fast so the issue is visible
 
     async def check_and_repair_existing_tables(self):
         """Check and fix the structure of existing tables, adding only the missing fields."""
