@@ -19,7 +19,8 @@ from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
-INTERNAL_KEY = os.getenv("THRONOS_AI_INTERNAL_KEY", "verifyid-saas-internal-20260222-xyz789")
+# SECURITY: Fail-fast on missing secrets — Phase 0 hardening
+INTERNAL_KEY = os.getenv("THRONOS_AI_INTERNAL_KEY", "")
 
 router = APIRouter(prefix="/internal", tags=["internal"])
 
