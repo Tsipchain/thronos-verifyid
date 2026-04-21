@@ -330,17 +330,22 @@ async def stripe_webhook(
     Stripe posts here on checkout.session.completed.
     Verifies signature, writes payment_events, upserts subscription, adds credits.
     """
+    # SECURITY: Webhook bypass removed — Phase 0 hardening
     payload = await request.body()
     webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 
-    if webhook_secret and stripe_signature:
-        try:
-            event = stripe.Webhook.construct_event(payload, stripe_signature, webhook_secret)
-        except Exception:
-            raise HTTPException(status_code=400, detail="Invalid Stripe signature")
-    else:
-        # Dev mode — no signature check
-        event = json.loads(payload)
+    if not webhook_secret:
+        raise HTTPException(
+            status_code=500,
+            detail="STRIPE_WEBHOOK_SECRET not configured — cannot verify webhook",
+        )
+    if not stripe_signature:
+        raise HTTPException(status_code=400, detail="Missing stripe-signature header")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, stripe_signature, webhook_secret)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Stripe signature")
 
     event_type = event.get("type", "")
 
