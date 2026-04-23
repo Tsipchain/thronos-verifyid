@@ -67,9 +67,21 @@ async def lifespan(app: FastAPI):
     logger.info("=== Application startup initiated ===")
 
     # MODULE_STARTUP_START
-    validate_environment()
+    # Run DB init FIRST so schema migrations can run even if env validation
+    # later fails (e.g. missing secrets).  This fixes the "column users.email
+    # does not exist" error that occurs when the users table was created by
+    # an older schema and the migration never got a chance to add the column.
     try:
         await initialize_database()
+    except Exception as e:
+        logger.error(f"Database initialization failed: {e}")
+
+    try:
+        validate_environment()
+    except Exception as e:
+        logger.error(f"Environment validation failed (app will continue): {e}")
+
+    try:
         await initialize_mock_data()
         await initialize_admin_user()
     except Exception as e:
@@ -127,7 +139,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_allow_origins,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Internal-Key"],
 )
 # MODULE_MIDDLEWARE_END

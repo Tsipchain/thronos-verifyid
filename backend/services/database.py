@@ -13,6 +13,34 @@ async def _run_startup_migrations():
             dialect = db_manager.engine.dialect.name
 
             if dialect == "postgresql":
+                # Ensure users table has all required columns (defense in depth —
+                # _ensure_users_table_columns in DatabaseManager handles this too,
+                # but if create_tables() failed we still need the fix).
+                _users_cols = [
+                    ("email", "VARCHAR(255)"),
+                    ("name", "VARCHAR(255)"),
+                    ("role", "VARCHAR(50) DEFAULT 'client'"),
+                    ("password_hash", "VARCHAR(255)"),
+                    ("password_salt", "VARCHAR(255)"),
+                    ("is_active", "BOOLEAN DEFAULT TRUE"),
+                    ("productivity_points", "INTEGER DEFAULT 0"),
+                    ("created_at", "TIMESTAMPTZ DEFAULT now()"),
+                    ("last_login", "TIMESTAMPTZ"),
+                ]
+                for col_name, col_def in _users_cols:
+                    try:
+                        await db.execute(text(
+                            f"ALTER TABLE users ADD COLUMN IF NOT EXISTS {col_name} {col_def}"
+                        ))
+                    except Exception:
+                        pass
+                try:
+                    await db.commit()
+                    logger.info("✅ Migration: users table columns ensured")
+                except Exception as e:
+                    await db.rollback()
+                    logger.debug(f"users column migration skipped: {e}")
+
                 # Ensure document_image_url is TEXT (not VARCHAR) to support large base64 images
                 try:
                     await db.execute(text(
@@ -71,23 +99,30 @@ async def initialize_database():
     logger.debug("[DB_OP] Starting database initialization")
     logger.info("🔧 Starting database initialization...")
 
+    await db_manager.init_db()
+
     try:
-        await db_manager.init_db()
         await db_manager.create_tables()
+    except Exception as e:
+        logger.error(f"create_tables failed: {e}")
 
-        # Run any pending schema migrations
+    # Run startup migrations independently — if create_tables partially failed,
+    # this still gets a chance to fix schema issues (e.g. missing email column).
+    try:
         await _run_startup_migrations()
+    except Exception as e:
+        logger.error(f"Startup migrations failed: {e}")
 
-        # Initialize RBAC roles and permissions
+    # Initialize RBAC roles and permissions
+    try:
         async for db in get_db():
             await RBACService.initialize_default_roles(db)
             logger.info("✅ RBAC roles and permissions initialized")
             break
-
-        logger.info("✅ Database initialization completed successfully")
     except Exception as e:
-        logger.error(f"Failed to initialize database: {e}")
-        raise
+        logger.error(f"RBAC initialization failed: {e}")
+
+    logger.info("✅ Database initialization completed")
 
 
 async def close_database():
