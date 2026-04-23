@@ -52,12 +52,13 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"  # development, staging, production
 
-    # SECURITY: Fail-fast on missing secrets — Phase 0 hardening
-    # These fields have NO defaults; pydantic will raise on startup if
-    # the corresponding env vars are not set.
-    jwt_secret_key: str
-    thronos_admin_secret: str
-    thronos_ai_internal_key: str  # Internal API key for AI Core integration
+    # SECURITY: These secrets are validated by validate_environment() at
+    # startup.  Empty-string defaults allow the app to import and run DB
+    # migrations even when env vars are missing — validate_environment()
+    # will raise before any requests are served.
+    jwt_secret_key: str = ""
+    thronos_admin_secret: str = ""
+    thronos_ai_internal_key: str = ""
 
     # Thronos Blockchain Configuration
     thronos_node1_url: str = "https://thrchain.up.railway.app"
