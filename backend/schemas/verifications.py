@@ -6,6 +6,14 @@ from datetime import datetime
 class DocumentVerificationCreate(BaseModel):
     document_type: str
     document_image_url: Optional[str] = None
+    document_number: Optional[str] = None
+    full_name: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    nationality: Optional[str] = None
+    issuing_country: Optional[str] = None
+    issue_date: Optional[str] = None
+    expiry_date: Optional[str] = None
+    org_id: Optional[str] = None
 
 
 class DocumentVerificationResponse(BaseModel):

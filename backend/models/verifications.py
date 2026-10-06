@@ -25,6 +25,7 @@ class DocumentVerifications(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     document_type = Column(SQLEnum(DocumentType), nullable=False)
     document_number = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
@@ -32,6 +33,7 @@ class DocumentVerifications(Base):
     nationality = Column(String, nullable=True)
     issue_date = Column(String, nullable=True)
     expiry_date = Column(String, nullable=True)
+    issuing_country = Column(String, nullable=True)
     document_image_url = Column(Text, nullable=True)
     verification_status = Column(SQLEnum(VerificationStatus), default=VerificationStatus.PENDING, nullable=False)
     fraud_score = Column(Integer, default=0, nullable=False)
@@ -55,6 +57,7 @@ class AgeVerifications(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     date_of_birth = Column(String, nullable=False)
     age = Column(Integer, nullable=False)
     is_verified = Column(Boolean, default=False, nullable=False)
@@ -70,6 +73,7 @@ class KYCForms(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     full_name = Column(String, nullable=False)
     email = Column(String, nullable=False)
     phone = Column(String, nullable=False)
@@ -90,6 +94,7 @@ class VideoVerifications(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     agent_name = Column(String, nullable=True)
     agent_id = Column(String, nullable=True)
     session_duration = Column(Integer, nullable=True)
@@ -104,6 +109,7 @@ class DigitalSignatures(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     signature_data = Column(Text, nullable=False)
     document_type = Column(String, nullable=True)
     signature_id = Column(String, unique=True, nullable=False)
@@ -116,6 +122,7 @@ class FraudAnalysis(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False)
+    org_id = Column(String(36), nullable=True, index=True)
     document_verification_id = Column(Integer, ForeignKey("document_verifications.id"), nullable=True)
     overall_score = Column(Integer, nullable=False)
     document_quality_score = Column(Integer, nullable=True)
@@ -157,6 +164,7 @@ class DriverProgramVerifications(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(String, nullable=False, index=True)
+    org_id = Column(String(36), nullable=True, index=True)
     program_type = Column(SQLEnum(DriverProgramType), nullable=False)
     status = Column(SQLEnum(DriverProgramStatus), default=DriverProgramStatus.PENDING, nullable=False)
 
