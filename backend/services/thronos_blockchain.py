@@ -38,18 +38,24 @@ class ThronosBlockchainService:
     ) -> Dict[str, Any]:
         """Store verification record on Thronos blockchain"""
         try:
+            import json as _json
+            verification_data = {
+                "verification_id": verification_id,
+                "user_id": user_id,
+                "verification_type": verification_type,
+                "status": status,
+                "documents": document_hashes,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "verified_by": verified_by or "system"
+            }
+            tx_hash = "0x" + hashlib.sha256(
+                _json.dumps(verification_data, sort_keys=True).encode()
+            ).hexdigest()
+
             payload = {
-                "tx": f"0xVERIF{verification_id:08d}",
+                "tx": tx_hash,
                 "network": "mainnet",
-                "verification_data": {
-                    "verification_id": verification_id,
-                    "user_id": user_id,
-                    "verification_type": verification_type,
-                    "status": status,
-                    "documents": document_hashes,
-                    "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-                    "verified_by": verified_by or "system"
-                }
+                "verification_data": verification_data
             }
 
             response = requests.post(

@@ -36,20 +36,21 @@ class VerificationService:
         data: DocumentVerificationCreate
     ) -> DocumentVerifications:
         """Create a new document verification record"""
-        # Simulate document extraction
         verification = DocumentVerifications(
             user_id=user_id,
             document_type=DocumentType(data.document_type),
-            document_number=f"P{random.randint(10000000, 99999999)}",
-            full_name="John Michael Doe",
-            date_of_birth="1990-05-15",
-            nationality="United States",
-            issue_date="2020-01-10",
-            expiry_date="2030-01-10",
+            document_number=data.document_number or "",
+            full_name=data.full_name or "",
+            date_of_birth=data.date_of_birth or "",
+            nationality=data.nationality or "",
+            issue_date=data.issue_date or "",
+            expiry_date=data.expiry_date or "",
+            issuing_country=getattr(data, "issuing_country", "") or "",
             document_image_url=data.document_image_url,
-            verification_status=VerificationStatus.PENDING,  # Start as PENDING for AI review
-            fraud_score=0,  # Will be set by AI
-            verified_at=None  # Not verified yet
+            verification_status=VerificationStatus.PENDING,
+            fraud_score=0,
+            verified_at=None,
+            org_id=getattr(data, "org_id", None) or "",
         )
         
         db.add(verification)
@@ -146,15 +147,14 @@ class VerificationService:
     @staticmethod
     async def get_user_document_verification(
         db: AsyncSession,
-        user_id: str
+        user_id: str,
+        org_id: str = None
     ) -> DocumentVerifications:
         """Get user's latest document verification"""
-        result = await db.execute(
-            select(DocumentVerifications)
-            .where(DocumentVerifications.user_id == user_id)
-            .order_by(desc(DocumentVerifications.created_at))
-            .limit(1)
-        )
+        q = select(DocumentVerifications).where(DocumentVerifications.user_id == user_id)
+        if org_id:
+            q = q.where(DocumentVerifications.org_id == org_id)
+        result = await db.execute(q.order_by(desc(DocumentVerifications.created_at)).limit(1))
         return result.scalar_one_or_none()
     
     @staticmethod
@@ -185,15 +185,14 @@ class VerificationService:
     @staticmethod
     async def get_user_age_verification(
         db: AsyncSession,
-        user_id: str
+        user_id: str,
+        org_id: str = None
     ) -> AgeVerifications:
         """Get user's age verification"""
-        result = await db.execute(
-            select(AgeVerifications)
-            .where(AgeVerifications.user_id == user_id)
-            .order_by(desc(AgeVerifications.created_at))
-            .limit(1)
-        )
+        q = select(AgeVerifications).where(AgeVerifications.user_id == user_id)
+        if org_id:
+            q = q.where(AgeVerifications.org_id == org_id)
+        result = await db.execute(q.order_by(desc(AgeVerifications.created_at)).limit(1))
         return result.scalar_one_or_none()
     
     @staticmethod
@@ -226,15 +225,14 @@ class VerificationService:
     @staticmethod
     async def get_user_kyc_form(
         db: AsyncSession,
-        user_id: str
+        user_id: str,
+        org_id: str = None
     ) -> KYCForms:
         """Get user's KYC form"""
-        result = await db.execute(
-            select(KYCForms)
-            .where(KYCForms.user_id == user_id)
-            .order_by(desc(KYCForms.created_at))
-            .limit(1)
-        )
+        q = select(KYCForms).where(KYCForms.user_id == user_id)
+        if org_id:
+            q = q.where(KYCForms.org_id == org_id)
+        result = await db.execute(q.order_by(desc(KYCForms.created_at)).limit(1))
         return result.scalar_one_or_none()
     
     @staticmethod
@@ -262,15 +260,14 @@ class VerificationService:
     @staticmethod
     async def get_user_video_verification(
         db: AsyncSession,
-        user_id: str
+        user_id: str,
+        org_id: str = None
     ) -> VideoVerifications:
         """Get user's video verification"""
-        result = await db.execute(
-            select(VideoVerifications)
-            .where(VideoVerifications.user_id == user_id)
-            .order_by(desc(VideoVerifications.created_at))
-            .limit(1)
-        )
+        q = select(VideoVerifications).where(VideoVerifications.user_id == user_id)
+        if org_id:
+            q = q.where(VideoVerifications.org_id == org_id)
+        result = await db.execute(q.order_by(desc(VideoVerifications.created_at)).limit(1))
         return result.scalar_one_or_none()
     
     @staticmethod
@@ -299,15 +296,14 @@ class VerificationService:
     @staticmethod
     async def get_user_digital_signature(
         db: AsyncSession,
-        user_id: str
+        user_id: str,
+        org_id: str = None
     ) -> DigitalSignatures:
         """Get user's digital signature"""
-        result = await db.execute(
-            select(DigitalSignatures)
-            .where(DigitalSignatures.user_id == user_id)
-            .order_by(desc(DigitalSignatures.created_at))
-            .limit(1)
-        )
+        q = select(DigitalSignatures).where(DigitalSignatures.user_id == user_id)
+        if org_id:
+            q = q.where(DigitalSignatures.org_id == org_id)
+        result = await db.execute(q.order_by(desc(DigitalSignatures.created_at)).limit(1))
         return result.scalar_one_or_none()
     
     @staticmethod
@@ -316,76 +312,43 @@ class VerificationService:
         user_id: str,
         data: FraudAnalysisCreate
     ) -> FraudAnalysis:
-        """Create fraud analysis record"""
-        # Simulate AI fraud detection scores
-        scores = {
-            "document_quality": random.randint(92, 99),
-            "security_features": random.randint(90, 98),
-            "biometric": random.randint(93, 99),
-            "liveness": random.randint(91, 97),
-            "data_consistency": random.randint(95, 100),
-            "manipulation_detection": random.randint(94, 99),
-            "deepfake": random.randint(93, 98)
-        }
-        
-        overall_score = sum(scores.values()) // len(scores)
-        
-        # Determine risk level
-        if overall_score >= 90:
-            risk_level = "low"
-        elif overall_score >= 70:
-            risk_level = "medium"
+        """Create fraud analysis record using AI fraud service"""
+        from services.ai_fraud_service import AIFraudService
+
+        doc_verification = None
+        if data.document_verification_id:
+            result = await db.execute(
+                select(DocumentVerifications).where(
+                    DocumentVerifications.id == data.document_verification_id
+                )
+            )
+            doc_verification = result.scalar_one_or_none()
+
+        if doc_verification:
+            ai_result = await AIFraudService.analyze_document(db=db, verification=doc_verification)
+            overall_score = ai_result.fraud_score
+            risk_level = ai_result.risk_level
+            analysis_details = {
+                "source": "ai_fraud_service",
+                "explanation": ai_result.explanation,
+                "flags": ai_result.flags,
+                "priority": ai_result.priority.value,
+            }
         else:
-            risk_level = "high"
-        
-        # Create detailed analysis
-        analysis_details = {
-            "checks": {
-                "document_analysis": {
-                    "image_quality": scores["document_quality"],
-                    "security_features": scores["security_features"],
-                    "microprints": 92,
-                    "fonts": 97
-                },
-                "biometric_analysis": {
-                    "face_recognition": scores["biometric"],
-                    "liveness_detection": scores["liveness"],
-                    "photo_comparison": 93
-                },
-                "data_validation": {
-                    "expiry_date": 100,
-                    "document_number": 99,
-                    "data_consistency": scores["data_consistency"],
-                    "cross_reference": 95
-                },
-                "manipulation_detection": {
-                    "digital_editing": scores["manipulation_detection"],
-                    "deepfake_detection": scores["deepfake"],
-                    "photo_manipulation": 94
-                }
-            },
-            "findings": [
-                "All security features are authentic and detectable",
-                "Biometric analysis confirms identity",
-                "No signs of digital manipulation detected",
-                "Data is consistent and verifiable"
-            ],
-            "recommendation": "Document passed all checks successfully. Verification approval recommended."
-        }
-        
+            overall_score = 50
+            risk_level = "medium"
+            analysis_details = {
+                "source": "no_document",
+                "explanation": "No linked document verification found for analysis",
+                "flags": ["missing_document_reference"],
+            }
+
         analysis = FraudAnalysis(
             user_id=user_id,
             document_verification_id=data.document_verification_id,
             overall_score=overall_score,
-            document_quality_score=scores["document_quality"],
-            security_features_score=scores["security_features"],
-            biometric_score=scores["biometric"],
-            liveness_score=scores["liveness"],
-            data_consistency_score=scores["data_consistency"],
-            manipulation_detection_score=scores["manipulation_detection"],
-            deepfake_score=scores["deepfake"],
             risk_level=risk_level,
-            analysis_details=json.dumps(analysis_details)
+            analysis_details=json.dumps(analysis_details),
         )
         
         db.add(analysis)
@@ -396,15 +359,14 @@ class VerificationService:
     @staticmethod
     async def get_user_fraud_analysis(
         db: AsyncSession,
-        user_id: str
+        user_id: str,
+        org_id: str = None
     ) -> FraudAnalysis:
         """Get user's latest fraud analysis"""
-        result = await db.execute(
-            select(FraudAnalysis)
-            .where(FraudAnalysis.user_id == user_id)
-            .order_by(desc(FraudAnalysis.created_at))
-            .limit(1)
-        )
+        q = select(FraudAnalysis).where(FraudAnalysis.user_id == user_id)
+        if org_id:
+            q = q.where(FraudAnalysis.org_id == org_id)
+        result = await db.execute(q.order_by(desc(FraudAnalysis.created_at)).limit(1))
         return result.scalar_one_or_none()
     
     @staticmethod
