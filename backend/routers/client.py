@@ -322,19 +322,19 @@ async def get_queue_status(
                 }
             if recent_ver.verification_status == VerificationStatus.APPROVED:
                 return {
-                    "in_queue": False, "status": "approved_pending_finalize", "route": "human_agent", "queue_id": None,
+                    "in_queue": False, "status": "completed", "route": "admin_decision", "queue_id": None,
                     "queue_position": 0, "available_agents": 0,
                     "verification_status": "approved", "blockchain_tx_hash": recent_ver.blockchain_tx_hash,
                 }
             if recent_ver.verification_status == VerificationStatus.IN_REVIEW:
                 return {
-                    "in_queue": False, "status": "awaiting_admin", "route": "ai_admin_review", "queue_id": None,
+                    "in_queue": False, "status": "ai_reviewed", "route": "ai_admin_review", "queue_id": None,
                     "queue_position": 0, "available_agents": 0,
                     "verification_status": "in_review", "blockchain_tx_hash": None,
                 }
             if recent_ver.verification_status == VerificationStatus.PENDING:
                 return {
-                    "in_queue": False, "status": "routing", "route": "pending", "queue_id": None,
+                    "in_queue": False, "status": "fraud_check", "route": "pending", "queue_id": None,
                     "queue_position": 0, "available_agents": 0,
                 }
 
